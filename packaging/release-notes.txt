@@ -1,0 +1,16 @@
+OpenKeyBoad for Windows, macOS, Linux, Android, iOS and Web.
+
+Windows: extract and run KeyboardControl.exe; native Flutter app is also supplied.
+Linux: install libhidapi-hidraw0 and playerctl. Install the included udev rules for USB access.
+macOS: the app is ad-hoc signed, not notarized. Allow media automation for Music / Spotify.
+Android APK uses a test signing key. iOS IPA is unsigned and must be signed before installation.
+Web/iOS can connect through the temporary LAN link printed by the desktop bridge.
+
+Includes the matching RS2 / AK650 firmware, VIA layouts and SHA-256 checksums.
+Firmware.zip contains the flashing helper. Use only the image matching the connected keyboard.
+
+Windows：解压运行 KeyboardControl.exe，也提供原生 Flutter 客户端。
+Linux：安装 libhidapi-hidraw0、playerctl，并安装随附的 udev 规则。
+macOS：应用为临时签名，未公证；歌词功能需允许读取 Music / Spotify。
+Android APK 使用测试签名，iOS IPA 未签名，需自行签名安装。
+手机/Web 可使用桌面中继显示的局域网临时连接链接。

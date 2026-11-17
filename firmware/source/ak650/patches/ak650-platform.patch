@@ -1,0 +1,743 @@
+diff --git a/drivers/led/sn32f2xx.c b/drivers/led/sn32f2xx.c
+index 01d04da6..1a69a3c3 100644
+--- a/drivers/led/sn32f2xx.c
++++ b/drivers/led/sn32f2xx.c
+@@ -445,9 +445,7 @@ static void update_pwm_channels(PWMDriver *pwmp) {
+     bool enable_pwm_output = false;
+     for (uint8_t current_key_col = 0; current_key_col < SN32F2XX_RGB_MATRIX_COLS; current_key_col++) {
+         uint8_t led_index = g_led_config.matrix_co[current_key_row][current_key_col];
+-#    if (SN32F2XX_PWM_CONTROL == SOFTWARE_PWM)
+         if (led_index >= SN32F2XX_LED_COUNT) continue;
+-#    endif // SN32F2XX_PWM_CONTROL
+         // Check if we need to enable RGB output
+         if (led_state[led_index].b > 0) enable_pwm_output |= true;
+         if (led_state[led_index].g > 0) enable_pwm_output |= true;
+@@ -541,9 +539,7 @@ static void update_pwm_channels(PWMDriver *pwmp) {
+     bool enable_pwm_output = false;
+     for (uint8_t current_key_row = 0; current_key_row < MATRIX_ROWS; current_key_row++) {
+         uint8_t led_index = g_led_config.matrix_co[current_key_row][current_key_col];
+-#    if (SN32F2XX_PWM_CONTROL == SOFTWARE_PWM)
+         if (led_index >= SN32F2XX_LED_COUNT) continue;
+-#    endif
+         uint8_t led_row_id = (current_key_row * SN32F2XX_RGB_MATRIX_ROW_CHANNELS);
+         // Check if we need to enable RGB output
+         if (led_state[led_index].b > 0) enable_pwm_output |= true;
+@@ -759,4 +755,4 @@ bool matrix_scan_custom(matrix_row_t current_matrix[]) {
+
+     return changed;
+ }
+-#endif // SHARED_MATRIX
+\ No newline at end of file
++#endif // SHARED_MATRIX
+diff --git a/keyboards/a_jazz/ak820pro/ak820pro.c b/keyboards/a_jazz/ak820pro/ak820pro.c
+index 7e3e46ea..f2146cd2 100644
+--- a/keyboards/a_jazz/ak820pro/ak820pro.c
++++ b/keyboards/a_jazz/ak820pro/ak820pro.c
+@@ -16,6 +16,19 @@
+ #include "watchdog.h"
+ #include "usb_main.h"     // USB_DRIVER (USBD1), USB_SUSPENDED
+
++#ifndef AK820PRO_FLASH_HID_ENABLE
++#    define AK820PRO_FLASH_HID_ENABLE 1
++#endif
++#ifndef AK820PRO_DISCRETE_WIN_LED
++#    define AK820PRO_DISCRETE_WIN_LED 1
++#endif
++#ifndef AK820PRO_DISCRETE_CHARGE_LED
++#    define AK820PRO_DISCRETE_CHARGE_LED 1
++#endif
++#ifndef AK820PRO_OS_SWITCH_INVERTED
++#    define AK820PRO_OS_SWITCH_INVERTED 0
++#endif
++
+ // Current wireless mode, derived from the tri-state slider. The Fn BT controls
+ // are only meaningful in the matching mode (e.g. Fn+Q selects a BT slot only
+ // while the slider is in the BT position), so they are gated on this.
+@@ -48,11 +61,27 @@ static void save_bt_profile(ch582_profile_t p) {
+     eeconfig_update_kb_datablock(&kb_config, 0, sizeof(kb_config));
+ }
+
+-// Fn+P long-press tracking: pairing only starts after a sustained hold, and
+-// only while in a wireless mode.
+-#define BT_PAIR_HOLD_MS 1000
+-static uint16_t bt_pair_timer = 0;
+-static bool     bt_pair_armed = false;
++#ifndef BT_PAIR_HOLD_MS
++#    define BT_PAIR_HOLD_MS 1000
++#endif
++static uint16_t bt_pair_timer;
++static uint16_t bt_pair_keycode = KC_NO;
++
++static void pair_key_down(uint16_t keycode) {
++    bt_pair_timer = timer_read();
++    bt_pair_keycode = keycode;
++}
++
++static void pair_key_up(uint16_t keycode) {
++    if (bt_pair_keycode == keycode) bt_pair_keycode = KC_NO;
++}
++
++static void pair_task(void) {
++    if (bt_pair_keycode != KC_NO && timer_elapsed(bt_pair_timer) >= BT_PAIR_HOLD_MS) {
++        bt_pair_keycode = KC_NO;
++        ch582_enter_pairing();
++    }
++}
+
+ #ifdef RGB_MATRIX_ENABLE
+ // Debounced RGB-config persistence. The RGBM_* keycodes change the live config
+@@ -67,7 +96,7 @@ static bool     bt_pair_armed = false;
+ #    endif
+ static bool     rgb_settle_pending = false;
+ static uint32_t rgb_settle_timer   = 0;
+-static inline void rgb_settle_arm(void) {
++void rgb_settle_arm(void) {
+     rgb_settle_pending = true;
+     rgb_settle_timer   = timer_read32();
+ }
+@@ -93,14 +122,18 @@ void early_hardware_init_post(void) {
+
+     // Windows Lock and Charging LEDs: outputs, off initially. update_leds() then
+     // tracks their real state, writing only on a change.
++#if AK820PRO_DISCRETE_WIN_LED
+     gpio_set_pin_output(LED_WINLOCK_PIN);
+     gpio_write_pin(LED_WINLOCK_PIN, false);
++#endif
++#if AK820PRO_DISCRETE_CHARGE_LED
+     gpio_set_pin_output(LED_CHARGING_PIN);
+     gpio_write_pin(LED_CHARGING_PIN, false);
+
+     // Set up GPIO pins for the charging status inputs
+     gpio_set_pin_input_high(CHARGE_CHRG_PIN);   // input with pull-up
+     gpio_set_pin_input_high(CHARGE_STDBY_PIN);  // input with pull-up
++#endif
+
+     // Restore persisted config. A fresh/invalid EEPROM zero-fills the block, so a
+     // 0 (or out-of-range) bt_profile falls back to slot 1.
+@@ -130,6 +163,9 @@ void early_hardware_init_post(void) {
+  }
+
+  bool dip_switch_update_kb(uint8_t index, bool active) {
++    if (index == 0 && AK820PRO_OS_SWITCH_INVERTED) {
++        active = !active;
++    }
+     // Let the keymap handle layer logic (Mac/Win, no_gui) first.
+     if(!dip_switch_update_user(index, active)) {
+         return false;
+@@ -147,6 +183,7 @@ void early_hardware_init_post(void) {
+         // wireless key forwarding. Recompute the mode from the latched pin states.
+         static bool bt_on  = false;
+         static bool g24_on = false;
++        bt_pair_keycode = KC_NO; // A physical mode change cancels a held pairing key.
+         if (index == 1) bt_on = active;
+         if (index == 2) g24_on = active;
+
+@@ -213,49 +250,36 @@ bool process_record_kb(uint16_t keycode, keyrecord_t *record) {
+         case RGBM_SPI:  case RM_SPDU:  if (record->event.pressed) { rgb_matrix_increase_speed_noeeprom(); rgb_settle_arm(); } return false;
+         case RGBM_SPD:  case RM_SPDD:  if (record->event.pressed) { rgb_matrix_decrease_speed_noeeprom(); rgb_settle_arm(); } return false;
+ #endif
+-        /* BT slot keys use the @isuua/edthu devctrl model: TAP = select the slot
+-         * (A6 <slot>, reconnect the existing bond); HOLD = select + pair (adds
+-         * A6 0x51 on the held slot). Select happens on press for instant feedback;
+-         * the pair is added if the key is still held at BT_PAIR_HOLD_MS. This
+-         * replaces needing a separate pair key, though Fn+P still works. */
+-        case BT1:  // Fn+Q -> tap: select BT1 | hold: pair BT1
+-        case BT2:  // Fn+W -> tap: select BT2 | hold: pair BT2
+-        case BT3:  // Fn+E -> tap: select BT3 | hold: pair BT3
+-            if (record->event.pressed) {
+-                if (wireless_mode == WL_MODE_BT) {
+-                    ch582_profile_t slot = keycode == BT1 ? CH582_PROFILE_BT_1
+-                                         : keycode == BT2 ? CH582_PROFILE_BT_2
+-                                                          : CH582_PROFILE_BT_3;
+-                    save_bt_profile(slot);
+-                    ch582_set_profile(last_bt_profile);          // tap action: select
+-                    connection_set_host_noeeprom(CONNECTION_HOST_BLUETOOTH);
+-                    display_draw_bluetooth_logo();
+-                    bt_pair_timer = timer_read();                // arm hold-to-pair
+-                    bt_pair_armed = true;
+-                }
+-            } else if (bt_pair_armed) {
+-                bt_pair_armed = false;
+-                if (timer_elapsed(bt_pair_timer) >= BT_PAIR_HOLD_MS)
+-                    ch582_enter_pairing();                        // hold action: pair active slot
++        // Select on press, then start pairing if the same key stays held.
++        case BT1:
++        case BT2:
++        case BT3:
++            if (record->event.pressed && wireless_mode == WL_MODE_BT) {
++                ch582_profile_t slot = CH582_PROFILE_BT_1 + (keycode - BT1);
++                save_bt_profile(slot);
++                ch582_set_profile(last_bt_profile);
++                connection_set_host_noeeprom(CONNECTION_HOST_BLUETOOTH);
++                display_draw_bluetooth_logo();
++                pair_key_down(keycode);
++            } else if (!record->event.pressed) {
++                pair_key_up(keycode);
+             }
+             return false;
+-        case BT24G:  // Fn+R -> select 2.4G (2.4G mode only)
++        case BT24G:
+             if (record->event.pressed && wireless_mode == WL_MODE_24G) {
+                 ch582_set_profile(CH582_PROFILE_PEER_24G);
+                 connection_set_host_noeeprom(CONNECTION_HOST_BLUETOOTH);
+                 display_draw_2_4_g_logo();
++                pair_key_down(keycode);
++            } else if (!record->event.pressed) {
++                pair_key_up(keycode);
+             }
+             return false;
+-        case BT_PAIR:  // Fn+P (long press) -> pair, BT/2.4G modes only
+-            if (record->event.pressed) {
+-                // Arm a long-press only in a wireless mode; ignore in USB.
+-                bt_pair_armed = (wireless_mode != WL_MODE_USB);
+-                bt_pair_timer = timer_read();
+-            } else if (bt_pair_armed) {
+-                bt_pair_armed = false;
+-                if (timer_elapsed(bt_pair_timer) >= BT_PAIR_HOLD_MS) {
+-                    ch582_enter_pairing();
+-                }
++        case BT_PAIR:
++            if (record->event.pressed && wireless_mode != WL_MODE_USB) {
++                pair_key_down(keycode);
++            } else if (!record->event.pressed) {
++                pair_key_up(keycode);
+             }
+             return false;
+         default:
+@@ -452,7 +476,7 @@ void via_custom_value_command_kb(uint8_t *data, uint8_t length) {
+         rtc_apply_bytes(&data[3]); // leave data[0] = SET_VALUE -> "handled"
+         return;
+     }
+-    if (is_flash_cmd(data, length)) {
++    if (AK820PRO_FLASH_HID_ENABLE && is_flash_cmd(data, length)) {
+         flash_command(data, length);
+         return;
+     }
+@@ -468,7 +492,7 @@ void via_custom_value_command_kb(uint8_t *data, uint8_t length) {
+ void raw_hid_receive(uint8_t *data, uint8_t length) {
+     if (rtc_is_set_time_cmd(data, length)) {
+         rtc_apply_bytes(&data[3]);
+-    } else if (is_flash_cmd(data, length)) {
++    } else if (AK820PRO_FLASH_HID_ENABLE && is_flash_cmd(data, length)) {
+         flash_command(data, length);
+     } else if (length >= 2 && data[0] == RTC_SET_VALUE && data[1] == MEDIA_CHANNEL) {
+         media_hid_command(data, length);   // now-playing state (channel 0x12)
+@@ -481,7 +505,9 @@ void raw_hid_receive(uint8_t *data, uint8_t length) {
+ #endif
+
+
++#if AK820PRO_DISCRETE_CHARGE_LED || AK820PRO_DISCRETE_WIN_LED
+ static void update_leds(void) {
++#if AK820PRO_DISCRETE_CHARGE_LED
+     // Charging LED: on only while actively charging -- CHRG low (active) AND
+     // STDBY high (not "done").
+     static bool last_chrg = false;
+@@ -490,7 +516,9 @@ static void update_leds(void) {
+         gpio_write_pin(LED_CHARGING_PIN, is_charging);
+         last_chrg = is_charging;
+     }
++#endif
+
++#if AK820PRO_DISCRETE_WIN_LED
+     // Windows Lock LED: mirrors the GUI-lock flag.
+     static bool last_winlock = false;
+     bool winlock = keymap_config.no_gui;
+@@ -498,13 +526,16 @@ static void update_leds(void) {
+         gpio_write_pin(LED_WINLOCK_PIN, winlock);
+         last_winlock = winlock;
+     }
++#endif
+ }
++#endif
+
+ __attribute__((weak)) void display_housekeeping_task(void) {}
+
+ static void kb_sleep_task(void);   // idle-sleep (B-lite) + USB-suspend (A); below
+
+ void housekeeping_task_kb(void) {
++    pair_task();
+
+     // Throttle the housekeeping to 10 Hz
+     static uint32_t last_t = 0;
+@@ -512,7 +543,9 @@ void housekeeping_task_kb(void) {
+         last_t = timer_read32();
+
+         kb_sleep_task();                  // idle-sleep (B-lite) + USB-suspend (A)
++#if AK820PRO_DISCRETE_CHARGE_LED || AK820PRO_DISCRETE_WIN_LED
+         update_leds();
++#endif
+ #ifdef AK_DEBUG_SUSPEND
+         // Diagnostic (uncommitted): expose the two decisive signals on the
+         // indicator LEDs so we can see, while the host sleeps, whether the bus
+@@ -521,8 +554,12 @@ void housekeeping_task_kb(void) {
+         //   Charging LED (B18) = USB_DRIVER.state == USB_ACTIVE
+         // Normal wired use: Charging on, WinLock off. On host sleep, watch which
+         // (if either) changes -- tells us the real state the link drops to.
++#    if AK820PRO_DISCRETE_WIN_LED
+         gpio_write_pin(LED_WINLOCK_PIN,  USB_DRIVER.state == USB_SUSPENDED);
++#    endif
++#    if AK820PRO_DISCRETE_CHARGE_LED
+         gpio_write_pin(LED_CHARGING_PIN, USB_DRIVER.state == USB_ACTIVE);
++#    endif
+ #endif
+         if (!anim_active()) rtc_task();   // RTC I2C (port A) glitches the flash SPI1 pins (A12/A13) mid-DMA
+         anim_task();                      // one animation frame per 100 ms
+@@ -548,8 +585,10 @@ void housekeeping_task_kb(void) {
+ #endif
+     }
+
+-    // Chain the user hook
++    // QMK also calls the user hook after housekeeping_task_kb().
++#ifndef AK650_DASHBOARD
+     housekeeping_task_user();
++#endif
+
+     // Kick the watchdog last: a full housekeeping pass completed, so the main
+     // loop is alive. A wedge anywhere upstream stops the kicks -> WDT reset.
+@@ -573,21 +612,28 @@ void housekeeping_task_kb(void) {
+ //       The MCU keeps scanning, so the waking key still types; the display just
+ //       relights one housekeeping tick later.
+ static void kb_sleep_task(void) {
+-    static bool asleep = false;
++    static bool rgb_asleep = false;
++    static bool lcd_asleep = false;
+
+     bool host_suspended = (connection_get_host() == CONNECTION_HOST_USB) &&
+                           (USB_DRIVER.state == USB_SUSPENDED);
+-    bool idle = (DISPLAY_SLEEP_TIMEOUT_MS > 0) &&
+-                (last_input_activity_elapsed() >= (uint32_t)DISPLAY_SLEEP_TIMEOUT_MS);
+-    bool want_sleep = host_suspended || idle;
+-
+-    if (want_sleep && !asleep) {
+-        asleep = true;
+-        rgb_matrix_set_suspend_state(true);   // render effect 0 (all off)
+-        display_enter_sleep();                // panel sleep-in + backlight off
+-    } else if (!want_sleep && asleep) {
+-        asleep = false;
+-        rgb_matrix_set_suspend_state(false);
+-        display_exit_sleep();                 // sleep-out + backlight on + repaint
++    uint32_t idle_ms = last_input_activity_elapsed();
++    uint32_t rgb_timeout = DISPLAY_SLEEP_TIMEOUT_MS;
++#ifdef AK650_DASHBOARD
++    uint32_t lcd_timeout = display_idle_timeout_ms();
++#else
++    uint32_t lcd_timeout = rgb_timeout;
++#endif
++    bool want_rgb_sleep = host_suspended || (rgb_timeout > 0 && idle_ms >= rgb_timeout);
++    bool want_lcd_sleep = host_suspended || (lcd_timeout > 0 && idle_ms >= lcd_timeout);
++
++    if (want_rgb_sleep != rgb_asleep) {
++        rgb_asleep = want_rgb_sleep;
++        rgb_matrix_set_suspend_state(rgb_asleep);
++    }
++    if (want_lcd_sleep != lcd_asleep) {
++        lcd_asleep = want_lcd_sleep;
++        if (lcd_asleep) display_enter_sleep();
++        else            display_exit_sleep();
+     }
+ }
+diff --git a/keyboards/a_jazz/ak820pro/ak820pro.h b/keyboards/a_jazz/ak820pro/ak820pro.h
+index 05783456..56265893 100644
+--- a/keyboards/a_jazz/ak820pro/ak820pro.h
++++ b/keyboards/a_jazz/ak820pro/ak820pro.h
+@@ -5,6 +5,10 @@
+
+ #include "quantum.h"
+
++#ifdef RGB_MATRIX_ENABLE
++void rgb_settle_arm(void);
++#endif
++
+ // Keyboard-level custom keycodes handled in process_record_kb(). Based at
+ // QK_KB_0 (not SAFE_RANGE/QK_USER) so their values line up with VIA, which maps
+ // its customKeycodes[] to the QK_KB_0 range -- otherwise a keycode reassigned in
+diff --git a/keyboards/a_jazz/ak820pro/graphics/display.h b/keyboards/a_jazz/ak820pro/graphics/display.h
+index a3c6f750..d83e1427 100644
+--- a/keyboards/a_jazz/ak820pro/graphics/display.h
++++ b/keyboards/a_jazz/ak820pro/graphics/display.h
+@@ -5,6 +5,18 @@
+ #include <stdbool.h>
+ #include "rtc/rtc.h"
+
++#ifdef AK650_DASHBOARD
++#    include "qp.h"
++#    define DISPLAY_BACKLIGHT_LEVELS 5
++void display_set_backlight_level(uint8_t level);
++uint32_t display_idle_timeout_ms(void);
++void display_pump_ak650(void);
++bool display_ak650_needs_redraw(void);
++void display_send_ak650_slice(void);
++void display_render_ak650_dashboard(painter_device_t panel, painter_font_handle_t large, painter_font_handle_t small,
++                                   bool mac, uint8_t connection, bool media, bool force);
++#endif
++
+ bool display_init_kb(void);
+ bool display_init_user(void);
+ void display_housekeeping_task(void);
+diff --git a/keyboards/a_jazz/ak820pro/graphics/display_qp.c b/keyboards/a_jazz/ak820pro/graphics/display_qp.c
+index 7e70408f..1a8c5386 100644
+--- a/keyboards/a_jazz/ak820pro/graphics/display_qp.c
++++ b/keyboards/a_jazz/ak820pro/graphics/display_qp.c
+@@ -14,6 +14,9 @@
+ #include "rtc/rtc.h"
+ #include "media/media.h"
+ #include "graphics/nowplaying.h"
++#ifdef AK650_DASHBOARD
++#    include "ch.h"
++#endif
+
+ #include "res/sonixqmk.qgf.h"
+ #include "res/Iosevka-Regular-30.qff.h"
+@@ -33,8 +36,12 @@
+ #define PANEL_WIDTH     128
+ #define PANEL_HEIGHT    128
+
+-#define LCD_OFFSET_X 1
+-#define LCD_OFFSET_Y 2
++#ifndef LCD_OFFSET_X
++#    define LCD_OFFSET_X 1
++#endif
++#ifndef LCD_OFFSET_Y
++#    define LCD_OFFSET_Y 2
++#endif
+
+ // Bottom row: y position of the wireless status line (Iosevka 20 is ~20px
+ // tall, so 106 leaves it clear of the panel bottom at 128).
+@@ -63,6 +70,7 @@
+ static painter_device_t qp_display;
+ static painter_font_handle_t qp_font;        // big clock font (Iosevka 30)
+ static painter_font_handle_t qp_status_font; // small status font (Iosevka 20)
++#ifndef AK650_DASHBOARD
+ static painter_image_handle_t qp_splash_image;
+
+ static painter_image_handle_t qp_mac_logo;
+@@ -70,6 +78,7 @@ static painter_image_handle_t qp_win_logo;
+ static painter_image_handle_t qp_usb_logo;
+ static painter_image_handle_t qp_bt_logo;
+ static painter_image_handle_t qp_2_4g_logo;
++#endif
+
+ static bool display_powered = true;
+ static bool display_paused  = false;   // true while the flash-animation player owns the bus
+@@ -89,15 +98,59 @@ enum {
+ };
+ static uint8_t connection_mode = CONN_MODE_WIRED;
+
++static bool s_force_clock;
++static bool nowplaying_view(void) { return media_show() && !s_force_clock; }
++
+ bool display_get_power(void) {
+     return display_powered;
+ }
+
+-// Backlight is event-driven: written here whenever the power state changes, so
+-// housekeeping doesn't need to poll it.
++static bool s_slept = false;
++
++#ifdef AK650_DASHBOARD
++// A16 remains GPIO. A virtual timer modulates the backlight independently of
++// LCD drawing and the PWM peripherals already in use by the RGB matrix.
++static virtual_timer_t backlight_timer;
++static uint8_t backlight_level = DISPLAY_BACKLIGHT_LEVELS;
++static bool backlight_on_phase;
++
++static void backlight_tick(virtual_timer_t *timer, void *arg) {
++    chSysLockFromISR();
++    backlight_on_phase = !backlight_on_phase;
++    gpio_write_pin(PANEL_BKL, backlight_on_phase);
++    uint8_t slots = backlight_on_phase ? backlight_level : DISPLAY_BACKLIGHT_LEVELS - backlight_level;
++    chVTSetI(timer, TIME_US2I(slots * 200u), backlight_tick, NULL);
++    chSysUnlockFromISR();
++}
++
++static void apply_backlight_locked(void) {
++    if (chVTIsArmedI(&backlight_timer)) chVTResetI(&backlight_timer);
++    bool enabled = display_powered && !s_slept;
++    backlight_on_phase = enabled;
++    gpio_write_pin(PANEL_BKL, enabled);
++    if (enabled && backlight_level < DISPLAY_BACKLIGHT_LEVELS) {
++        chVTSetI(&backlight_timer, TIME_US2I(backlight_level * 200u), backlight_tick, NULL);
++    }
++}
++
++void display_set_backlight_level(uint8_t level) {
++    chSysLock();
++    backlight_level = level < 1 ? 1 : MIN(level, DISPLAY_BACKLIGHT_LEVELS);
++    apply_backlight_locked();
++    chSysUnlock();
++}
++#endif
++
+ void display_set_power(bool on) {
++#ifdef AK650_DASHBOARD
++    chSysLock();
++    display_powered = on;
++    apply_backlight_locked();
++    chSysUnlock();
++#else
+     display_powered = on;
+     gpio_write_pin(PANEL_BKL, on);
++#endif
+ }
+
+ void display_toggle_power(void) {
+@@ -110,7 +163,6 @@ void display_toggle_power(void) {
+ // blanked through QP (display-off opcode) instead of a raw sleep-in, since QP
+ // owns SPI0; qp_power() brackets its own comms so this is safe while paused.
+ // Idempotent via s_slept. anim_toggle() already drains any in-flight DMA frame.
+-static bool s_slept = false;
+ static bool s_anim_was_active = false;     // resume the animation on wake if it was playing
+
+ void display_enter_sleep(void) {
+@@ -120,24 +172,36 @@ void display_enter_sleep(void) {
+     if (s_anim_was_active) anim_toggle();  // stop the player (drains in-flight frame)
+     display_set_paused(true);              // stop the 10 Hz dashboard repaint
+     qp_power(qp_display, false);           // GC9107 display-off (blank)
+-    display_set_power(false);              // backlight off
++#ifdef AK650_DASHBOARD
++    display_set_power(display_powered);   // Sleep gates the backlight without changing the manual setting.
++#else
++    display_set_power(false);
++#endif
+ }
+
+ void display_exit_sleep(void) {
+     if (!s_slept) return;
+     s_slept = false;
+     qp_power(qp_display, true);            // display-on
+-    display_set_power(true);               // backlight on
++#ifdef AK650_DASHBOARD
++    display_set_power(display_powered);
++#else
++    display_set_power(true);
++#endif
+     if (s_anim_was_active) anim_toggle();  // resume the animation it was playing
+     else display_set_paused(false);        // otherwise unpause -> full dashboard repaint
+ }
+
+ static bool display_backlight_init(void) {
+     gpio_set_pin_output(PANEL_BKL);
++#ifdef AK650_DASHBOARD
++    chVTObjectInit(&backlight_timer);
++#endif
+     gpio_write_pin(PANEL_BKL, display_powered); // initial state (on)
+     return true;
+ }
+
++#ifndef AK650_DASHBOARD
+ // y position of the big clock (top of the glyphs).
+ #define CLOCK_Y 49
+
+@@ -153,7 +217,6 @@ static bool display_backlight_init(void) {
+ static bool clock_force_repaint = true;
+
+ static void draw_status(bool force);       // connection digit + battery gauge
+-static bool nowplaying_view(void);         // media active and not force-cleared
+ static void draw_nowplaying(bool force);   // now-playing block (below the gauge)
+
+ // Date DD/MM, top-right of the status line -- shown in both views.
+@@ -199,11 +262,18 @@ static void draw_clock_time(void) {
+     }
+     clock_force_repaint = false;
+ }
++#endif
+
+ uint32_t display_redraw_dashboard(uint32_t trigger_time, void *cb_arg) {
+
+     splash_cleared = true;
+
++#ifdef AK650_DASHBOARD
++    if (!display_paused && display_powered) {
++        display_render_ak650_dashboard(qp_display, qp_font, qp_status_font, mac_mode, connection_mode, nowplaying_view(), true);
++    }
++#else
++
+     // Clear background
+     qp_rect(qp_display, 0, 0, PANEL_WIDTH, PANEL_HEIGHT, 0, 255, 0, true);
+     np_invalidate();   // now-playing pixels are gone; keep the diff in sync
+@@ -235,6 +305,7 @@ uint32_t display_redraw_dashboard(uint32_t trigger_time, void *cb_arg) {
+
+     // Flush the display to ensure everything is drawn
+     qp_flush(qp_display);
++#endif
+
+     return 0; // Return 0 to stop, or return a time (in ms) to repeat
+ }
+@@ -256,19 +327,25 @@ bool display_init_kb(void) {
+     // inversion. v2 = QP_ROTATION_90 (BGR|MV|MX = 0x68, MY traded for MX) --
+     // the stock gc9107 QP driver has no inversion option, so poke it raw right
+     // after init, before anything is drawn.
++#ifndef AK820PRO_LCD_ROTATION
++#    if defined(LCD_PANEL_V2)
++#        define AK820PRO_LCD_ROTATION QP_ROTATION_90
++#    else
++#        define AK820PRO_LCD_ROTATION QP_ROTATION_270
++#    endif
++#endif
++    qp_init(qp_display, AK820PRO_LCD_ROTATION);
+ #if defined(LCD_PANEL_V2)
+-    qp_init(qp_display, QP_ROTATION_90);
+     qp_comms_start(qp_display);
+     qp_comms_command(qp_display, 0x21);   // GC9XXX_CMD_INVERT_ON
+     qp_comms_stop(qp_display);
+-#else
+-    qp_init(qp_display, QP_ROTATION_270);
+ #endif
+
+-    qp_rect(qp_display, 0, 0, PANEL_WIDTH, PANEL_HEIGHT, 0, 255, 0, true);
++    qp_rect(qp_display, 0, 0, PANEL_WIDTH - 1, PANEL_HEIGHT - 1, 0, 0, 0, true);
+
+     qp_font = qp_load_font_mem(font_Iosevka_Regular_30);
+     qp_status_font = qp_load_font_mem(font_Iosevka_Medium_20);
++#ifndef AK650_DASHBOARD
+     qp_splash_image = qp_load_image_mem(gfx_sonixqmk);
+
+     qp_mac_logo = qp_load_image_mem(gfx_apple_icon_24x24);
+@@ -281,13 +358,19 @@ bool display_init_kb(void) {
+         qp_drawimage(qp_display, 0, 0, qp_splash_image);
+
+     qp_close_image(qp_splash_image);
++#endif
+
+     // LCD backlight on
+     display_backlight_init();
+
+     bool res = display_init_user();
+-    if(res) // No more display initialization steps, flush the display to ensure everything is drawn
++    if (res) {
++#ifdef AK650_DASHBOARD
++        defer_exec(100, display_redraw_dashboard, NULL);
++#else
+         defer_exec(1500, display_redraw_dashboard, NULL);
++#endif
++    }
+
+     return true;
+ }
+@@ -300,6 +383,7 @@ __attribute__((weak)) bool display_housekeeping_task_user(void) {
+     return true;
+ }
+
++#ifndef AK650_DASHBOARD
+ extern bool    ch582_is_connected(void);
+ extern bool    ch582_is_24g(void);
+ extern bool    ch582_is_usb(void);
+@@ -385,10 +469,6 @@ static void draw_nowplaying(bool force) {
+     }
+ }
+
+-// View selection + force-clock toggle (SCR_MEDIA).
+-static bool s_force_clock = false;
+-static bool nowplaying_view(void) { return media_show() && !s_force_clock; }
+-
+ // Repaint only the swappable content zone (below the header). The header --
+ // Mac/Win icon, connection icon + digit, date, and the battery gauge -- is
+ // identical in both views, so a clock<->now-playing switch must not touch it (a
+@@ -402,21 +482,26 @@ static void redraw_view_content(void) {
+     else                   draw_clock_time();
+     qp_flush(qp_display);
+ }
++#endif
+
+ void display_toggle_media(void) {
+     s_force_clock = !s_force_clock;
++#ifndef AK650_DASHBOARD
+     // Never drive the panel while the animation player owns the bus: it has a
+     // frame blit in flight and a concurrent redraw hangs the board. The flag flip
+     // persists; when the player stops, display_set_paused(false) repaints in the
+     // now-current view. (The media view isn't visible under the animation anyway.)
+     if (display_paused) return;
+     redraw_view_content();   // only the content zone changes; leave the header alone
++#endif
+ }
+
++#ifndef AK650_DASHBOARD
+ static void draw_status(bool force) {
+     draw_conn_number(force);
+     draw_battery_gauge(force);
+ }
++#endif
+
+ void display_housekeeping_task(void) {
+     // Call the user-defined housekeeping task first. If it returns false, skip the default housekeeping.
+@@ -426,6 +511,11 @@ void display_housekeeping_task(void) {
+     if (display_paused) return;   // animation owns the bus
+     if (!splash_cleared) return;
+
++#ifdef AK650_DASHBOARD
++    if (display_powered) {
++        display_render_ak650_dashboard(qp_display, qp_font, qp_status_font, mac_mode, connection_mode, nowplaying_view(), false);
++    }
++#else
+     draw_conn_number(false);      // ~10 Hz for the blink; self-guarded
+
+     // Switch views (media started/stopped) -> repaint only the content zone; the
+@@ -453,34 +543,53 @@ void display_housekeeping_task(void) {
+     }
+
+     if (drew) qp_flush(qp_display);
++#endif
+ }
+
++#ifdef AK650_DASHBOARD
++void display_pump_ak650(void) {
++    if (!splash_cleared || display_paused || !display_powered) return;
++    if (display_ak650_needs_redraw()) display_housekeeping_task();
++    display_send_ak650_slice();
++}
++#endif
++
+ void display_draw_mac_logo(void) {
+     mac_mode = true;
++#ifndef AK650_DASHBOARD
+     if(splash_cleared && !display_paused)
+         qp_drawimage(qp_display, 0, 0, qp_mac_logo);
++#endif
+ }
+
+ void display_draw_windows_logo(void) {
+     mac_mode = false;
++#ifndef AK650_DASHBOARD
+     if(splash_cleared && !display_paused)
+         qp_drawimage(qp_display, 0, 0, qp_win_logo);
++#endif
+ }
+
+ void display_draw_usb_logo(void) {
+     connection_mode = CONN_MODE_WIRED;
++#ifndef AK650_DASHBOARD
+     if(splash_cleared && !display_paused)
+         qp_drawimage(qp_display, 32, 0, qp_usb_logo);
++#endif
+ }
+
+ void display_draw_bluetooth_logo(void) {
+     connection_mode = CONN_MODE_BLUETOOTH;
++#ifndef AK650_DASHBOARD
+     if(splash_cleared && !display_paused)
+         qp_drawimage(qp_display, 32, 0, qp_bt_logo);
++#endif
+ }
+
+ void display_draw_2_4_g_logo(void) {
+     connection_mode = CONN_MODE_2_4G;
++#ifndef AK650_DASHBOARD
+     if(splash_cleared && !display_paused)
+         qp_drawimage(qp_display, 32, 0, qp_2_4g_logo);
++#endif
+ }
+diff --git a/keyboards/a_jazz/ak820pro/mcuconf.h b/keyboards/a_jazz/ak820pro/mcuconf.h
+--- a/keyboards/a_jazz/ak820pro/mcuconf.h
++++ b/keyboards/a_jazz/ak820pro/mcuconf.h
+@@ -59,6 +59,11 @@
+ #undef SN32_PWM_CT16B0_IRQ_PRIORITY
+ #define SN32_PWM_CT16B0_IRQ_PRIORITY 3
+ #undef SN32_PWM_CT16B1_IRQ_PRIORITY
++#ifdef AK650_DASHBOARD
++// Let the AK650 RGB row scan preempt SPI0 while keeping UART2 highest.
++#define SN32_PWM_CT16B1_IRQ_PRIORITY 2
++#else
+ #define SN32_PWM_CT16B1_IRQ_PRIORITY 3
++#endif
+ #undef SN32_PWM_CT16B2_IRQ_PRIORITY
+ #define SN32_PWM_CT16B2_IRQ_PRIORITY 3
