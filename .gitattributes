@@ -1,0 +1,12 @@
+* text=auto eol=lf
+*.sh text eol=lf
+*.dart text eol=lf
+*.yml text eol=lf
+*.cmd text eol=crlf
+*.bin binary
+*.otf binary
+
+firmware/*.json -text
+firmware/SHA256SUMS -text
+
+*.patch -text -whitespace

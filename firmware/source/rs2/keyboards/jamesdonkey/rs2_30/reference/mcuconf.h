@@ -1,0 +1,31 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+#pragma once
+
+#include_next <mcuconf.h>
+
+#undef SN32_SERIAL_USE_UART2
+#define SN32_SERIAL_USE_UART2 TRUE
+#undef SN32_SERIAL_UART2_PRIORITY
+#define SN32_SERIAL_UART2_PRIORITY 1
+#undef SN32_SPI_USE_SPI0
+#define SN32_SPI_USE_SPI0 TRUE
+#undef SN32_SPI_SPI0_IRQ_PRIORITY
+#define SN32_SPI_SPI0_IRQ_PRIORITY 3
+#undef SN32_WDG_USE_WDT
+#define SN32_WDG_USE_WDT TRUE
+#undef SN32_ST_USE_TIMER
+#define SN32_ST_USE_TIMER SN32_TIM_CT16B5
+#undef SN32_PWM_USE_CT16B0
+#define SN32_PWM_USE_CT16B0 TRUE
+#undef SN32_PWM_USE_CT16B1
+#define SN32_PWM_USE_CT16B1 TRUE
+#undef SN32_PWM_USE_CT16B2
+#define SN32_PWM_USE_CT16B2 TRUE
+#undef SN32_PWM_CT16B0_IRQ_PRIORITY
+#define SN32_PWM_CT16B0_IRQ_PRIORITY 3
+#undef SN32_PWM_CT16B1_IRQ_PRIORITY
+// The RGB and key matrix share this timer. Keep it above the LCD SPI IRQ
+// so pixel transfers cannot extend the time a single LED row stays lit.
+#define SN32_PWM_CT16B1_IRQ_PRIORITY 2
+#undef SN32_PWM_CT16B2_IRQ_PRIORITY
+#define SN32_PWM_CT16B2_IRQ_PRIORITY 3

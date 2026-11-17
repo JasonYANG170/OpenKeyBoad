@@ -1,0 +1,19 @@
+diff --git a/keyboards/a_jazz/ak820pro/bluetooth/ch582f_ajazz.c b/keyboards/a_jazz/ak820pro/bluetooth/ch582f_ajazz.c
+--- a/keyboards/a_jazz/ak820pro/bluetooth/ch582f_ajazz.c
++++ b/keyboards/a_jazz/ak820pro/bluetooth/ch582f_ajazz.c
+@@ -367,6 +367,7 @@ void ch582_set_profile(ch582_profile_t profile) {
+     connect_requested    = true;
+     usb_mode             = false;
+     is_module_connected  = false;
++    host_leds            = 0;
+     conn_state           = CH582_CONN_LINKING;   /* attempting until 5B says otherwise */
+     linking_since        = timer_read();
+     last_attempt_time    = timer_read();
+@@ -383,6 +384,7 @@ void ch582_set_profile(ch582_profile_t profile) {
+ void ch582_enter_pairing(void) {
+     uint8_t param       = CH582_PAIR_PARAM;
+     is_module_connected = false;
++    host_leds           = 0;
+     is_pairing          = true;
+     conn_state          = CH582_CONN_PAIRING;
+     /* A6 51 carries no slot of its own and the link has no ACK, so a dropped
