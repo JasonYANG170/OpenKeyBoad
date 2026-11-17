@@ -1,0 +1,29 @@
+name: keyboard_control
+description: OpenKeyBoad configuration utility for JamesDonkey RS2 3.0 and AJAZZ AK650 QMK/VIA keyboards.
+publish_to: none
+version: 0.3.0+3
+environment:
+  sdk: '>=3.14.0 <4.0.0'
+  flutter: '>=3.50.0'
+dependencies:
+  flutter:
+    sdk: flutter
+  ffi: ^2.1.4
+  http: ^1.4.0
+  material_ui: ^1.1.0
+  file_picker: ^10.3.10
+  web: ^1.1.1
+  audioplayers: ^6.8.1
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/
+    - fonts/OFL.txt
+  fonts:
+    - family: Console SC
+      fonts:
+        - asset: fonts/ConsoleSC.otf

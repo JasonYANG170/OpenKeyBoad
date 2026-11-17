@@ -1,0 +1,23 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+#pragma once
+
+// Four VIA layers need 912 bytes for keycodes alone, plus macros and metadata.
+#define WEAR_LEVELING_BACKING_SIZE 4096
+
+#define CH582_SERIAL_DRIVER SD2
+#define CONNECTION_HOST_DEFAULT CONNECTION_HOST_USB
+#define EECONFIG_KB_DATA_SIZE 4
+#define EECONFIG_KB_DATA_VERSION 1
+
+#define SPI_DRIVER SPID0
+#define SPI_MOSI_PIN D2
+#define SPI_SCK_PIN D0
+#define SPI_MISO_PIN NO_PIN
+#define SPI_SS_PIN B8
+#define QUANTUM_PAINTER_DISPLAY_TIMEOUT 0
+#define CORTEX_ENABLE_WFI_IDLE FALSE
+#define RGB_MATRIX_SLEEP
+#define RGB_MATRIX_MAXIMUM_BRIGHTNESS 160
+#define RTC_AUTO_CALIBRATION
+#define RTC_SCL_PIN A14
+#define RTC_SDA_PIN A15
