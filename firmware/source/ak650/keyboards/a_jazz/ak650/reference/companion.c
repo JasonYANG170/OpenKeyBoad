@@ -1,0 +1,206 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+#include "companion.h"
+#include "rtc/rtc.h"
+#include "raw_hid.h"
+
+
+companion_state_t companion = {.cpu = 255, .memory = 255, .gpu = 255, .disk = 255, .page_request = 255, .minimum = 32767, .maximum = 32767, .aqi = 65535, .pm25 = 65535, .rain = 255, .uv = 255};
+static rgb_t palette[RGB_MATRIX_LED_COUNT];
+static uint8_t light_mode, intensity = 255;
+static uint32_t light_heartbeat;
+static bool title_changed, bitmap_changed;
+static uint8_t music_style, music_level, music_bands[8];
+static uint32_t word32(const uint8_t *p) { return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) | p[3]; }
+uint32_t companion_timer_remaining(void) {
+    if (companion.timer_state != 1 && companion.timer_state != 3) return companion.timer_remaining;
+    uint32_t elapsed = timer_elapsed32(companion.timer_time) / 1000;
+    return elapsed >= companion.timer_remaining ? 0 : companion.timer_remaining - elapsed;
+}
+
+bool companion_alive(uint32_t stamp, uint32_t lifetime) {
+    return stamp && timer_elapsed32(stamp) < lifetime;
+}
+
+static bool valid_time(const rtc_time_t *t) {
+    static const uint8_t days[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    if (t->year < 2000 || t->year > 2099 || t->month < 1 || t->month > 12) return false;
+    uint8_t max = days[t->month - 1] + (t->month == 2 && t->year % 4 == 0);
+    return t->day >= 1 && t->day <= max && t->hours < 24 && t->minutes < 60 && t->seconds < 60 && t->weekday < 7;
+}
+
+bool companion_command(uint8_t *data, uint8_t length) {
+    if (length != 32 || data[1] != COMPANION_CHANNEL || (data[0] != 7 && data[0] != 8)) return false;
+    uint8_t op = data[2];
+    uint8_t *p = data + 3;
+    if (data[0] == 8 && op == 0) {
+        p[0] = 1; p[1] = 0x7f; p[2] = COMPANION_WIDTH; p[3] = 20;
+        p[4] = RGB_MATRIX_LED_COUNT; p[5] = light_mode; p[6] = 4;
+        return true;
+    }
+    if (data[0] == 8 && op == 10) {
+        p[0] = (uint16_t)companion.temperature >> 8; p[1] = companion.temperature & 255;
+        p[2] = companion.humidity; p[3] = companion.weather_code;
+        p[4] = companion_alive(companion.weather_time, 3600000);
+        p[5] = companion.weather_hour; p[6] = companion.weather_minute;
+        return true;
+    }
+    if (data[0] != 7) { data[0] = 0xff; return true; }
+    switch (op) {
+        case 1: {
+            uint8_t start = p[0], count = p[1];
+            if (!count || count > 8 || start + count > RGB_MATRIX_LED_COUNT) break;
+            for (uint8_t i = 0; i < count; ++i) {
+                palette[start + i] = (rgb_t){p[2 + i * 3], p[3 + i * 3], p[4 + i * 3]};
+            }
+            return true;
+        }
+        case 2:
+            if (p[0] > 3) break;
+            light_mode = p[0]; intensity = p[1];
+            light_heartbeat = timer_read32();
+            return true;
+        case 3:
+            for (uint8_t i = 0; i < 4; ++i) if (p[i] > 100 && p[i] != 255) { data[0] = 0xff; return true; }
+            if (companion.cpu != p[0] || companion.memory != p[1] || companion.gpu != p[2] || companion.disk != p[3] ||
+                !companion_alive(companion.monitor_time, 10000)) ++companion.monitor_revision;
+            companion.cpu = p[0]; companion.memory = p[1]; companion.gpu = p[2]; companion.disk = p[3];
+            companion.monitor_time = companion.screen_activity = timer_read32();
+            ++companion.revision;
+            return true;
+        case 4: {
+            int16_t temperature = (int16_t)((p[0] << 8) | p[1]);
+            if (temperature < -1000 || temperature > 800 || p[2] > 100 || p[3] > 99 || p[4] > 23 || p[5] > 59) break;
+            if (companion.temperature != temperature || companion.humidity != p[2] || companion.weather_code != p[3] ||
+                companion.weather_hour != p[4] || companion.weather_minute != p[5] ||
+                !companion_alive(companion.weather_time, 3600000)) ++companion.weather_revision;
+            companion.temperature = temperature; companion.humidity = p[2]; companion.weather_code = p[3];
+            companion.weather_hour = p[4]; companion.weather_minute = p[5];
+            companion.weather_time = companion.screen_activity = timer_read32();
+            ++companion.revision;
+            return true;
+        }
+        case 5:
+        case 11: {
+            uint16_t offset = (p[0] << 8) | p[1];
+            uint8_t count = p[2];
+            if (!count || count > 26 || offset + count > (op == 5 ? sizeof(companion.bitmap) : sizeof(companion.title))) break;
+            uint8_t *target = (op == 5 ? companion.bitmap : companion.title) + offset;
+            if (memcmp(target, p + 3, count)) {
+                if (op == 5) bitmap_changed = true;
+                else title_changed = true;
+                memcpy(target, p + 3, count);
+            }
+            return true;
+        }
+        case 6:
+            if (p[0] > 1 || ((p[1] << 8) | p[2]) > 1000) break;
+            if (title_changed) { ++companion.title_revision; title_changed = false; }
+            if (bitmap_changed) { ++companion.lyric_revision; bitmap_changed = false; }
+            if (companion.playing != p[0] || companion.progress != ((p[1] << 8) | p[2])) ++companion.playback_revision;
+            companion.playing = p[0]; companion.progress = (p[1] << 8) | p[2];
+            companion.lyric_time = companion.screen_activity = timer_read32();
+            ++companion.revision;
+            return true;
+        case 7: {
+            rtc_time_t t = {.year = 2000 + p[0], .month = p[1], .day = p[2], .weekday = p[3],
+                            .hours = p[4], .minutes = p[5], .seconds = p[6]};
+            if (!valid_time(&t)) break;
+            p[7] = rtc_set_time(&t) ? 1 : 0;
+            return true;
+        }
+        case 8:
+            if (p[0] > 5) break;
+            companion.page_request = p[0];
+            companion.screen_activity = timer_read32();
+            ++companion.revision;
+            return true;
+        case 12: {
+            uint32_t download = word32(p), upload = word32(p + 4);
+            if (p[8] > 1) break;
+            if (companion.download != download || companion.upload != upload || companion.network_ready != p[8] || !companion_alive(companion.network_time, 5000)) ++companion.network_revision;
+            companion.download = download; companion.upload = upload; companion.network_ready = p[8];
+            companion.network_time = companion.screen_activity = timer_read32();
+            return true;
+        }
+        case 13: {
+            uint32_t remaining = word32(p + 1), duration = word32(p + 5);
+            if (p[0] > 4 || duration > 86400 || remaining > duration || p[10] > 1) break;
+            if (companion.timer_state != p[0] || companion.timer_duration != duration || companion.timer_cycles != p[9] || companion.timer_rest != p[10]) ++companion.timer_revision;
+            companion.timer_state = p[0]; companion.timer_remaining = remaining; companion.timer_duration = duration;
+            companion.timer_cycles = p[9]; companion.timer_rest = p[10];
+            companion.timer_time = companion.screen_activity = timer_read32();
+            return true;
+        }
+        case 14: {
+            int16_t minimum = (int16_t)((p[0] << 8) | p[1]), maximum = (int16_t)((p[2] << 8) | p[3]);
+            uint16_t aqi = (p[6] << 8) | p[7], pm25 = (p[8] << 8) | p[9];
+            if ((minimum != 32767 && (minimum < -1000 || minimum > 800)) || (maximum != 32767 && (maximum < -1000 || maximum > 800)) ||
+                (p[4] > 100 && p[4] != 255) || (p[5] > 250 && p[5] != 255) || (aqi > 500 && aqi != 65535)) break;
+            if (companion.minimum != minimum || companion.maximum != maximum || companion.rain != p[4] || companion.uv != p[5] || companion.aqi != aqi || companion.pm25 != pm25) ++companion.weather_revision;
+            companion.minimum = minimum; companion.maximum = maximum; companion.rain = p[4]; companion.uv = p[5]; companion.aqi = aqi; companion.pm25 = pm25;
+            return true;
+        }
+        case 15:
+            if (p[0] < 1 || p[0] > 3) break;
+            music_style = p[0]; music_level = p[1]; memcpy(music_bands, p + 2, 8);
+            light_mode = 3; light_heartbeat = timer_read32();
+            return true;
+        default: break;
+    }
+    data[0] = 0xff;
+    return true;
+}
+
+uint8_t companion_changed(companion_view_t *view, uint8_t remote_page) {
+    companion_view_t current = {
+        .network = companion.network_revision, .timer = companion.timer_revision, .remaining = companion_timer_remaining(),
+        .monitor = companion.monitor_revision, .weather = companion.weather_revision,
+        .title = companion.title_revision, .lyric = companion.lyric_revision, .playback = companion.playback_revision,
+        .fresh = (companion_alive(companion.monitor_time, 10000) ? 1 : 0) |
+                 (companion_alive(companion.weather_time, 3600000) ? 2 : 0) |
+                 (companion_alive(companion.lyric_time, 15000) ? 4 : 0) |
+                 (companion_alive(companion.network_time, 5000) ? 8 : 0),
+    };
+    uint8_t bands = 0;
+    if (remote_page == 1 && view->monitor != current.monitor) bands |= 3;
+    if (remote_page == 2 && view->weather != current.weather) bands |= 7;
+    if (remote_page == 4 && (view->network != current.network || ((view->fresh ^ current.fresh) & 8))) bands |= 7;
+    if (remote_page == 5) {
+        if (view->timer != current.timer) bands |= 7;
+        else if (view->remaining != current.remaining) bands |= 3;
+    }
+    if (remote_page == 3) {
+        if (view->title != current.title) bands |= 1;
+        if (view->lyric != current.lyric) bands |= 2;
+        if (view->playback != current.playback) bands |= 4;
+    }
+    if (remote_page >= 1 && remote_page <= 3 && ((view->fresh ^ current.fresh) & (1 << (remote_page - 1)))) bands |= 7;
+    *view = current;
+    return bands;
+}
+
+void companion_indicators(void) {
+    if (!light_mode || !rgb_matrix_is_enabled() || rgb_matrix_get_suspend_state()) return;
+    if (light_mode >= 2 && !companion_alive(light_heartbeat, 2500)) return;
+    uint16_t level = rgb_matrix_get_val();
+    if (light_mode == 2) level = level * intensity / 255;
+    for (uint8_t i = 0; i < RGB_MATRIX_LED_COUNT; ++i) {
+        if (light_mode == 3) {
+            static const rgb_t spectrum[] = {{255,50,50},{255,135,30},{240,220,30},{60,230,60},{20,210,210},{40,100,255},{140,60,255},{250,50,180}};
+            uint8_t band = (uint16_t)i * 8 / RGB_MATRIX_LED_COUNT;
+            rgb_t color = music_style == 1 ? palette[i] : spectrum[music_style == 3 ? (band + timer_read32() / 160) % 8 : band];
+            uint16_t strength = music_style == 2 ? music_bands[band] : music_level;
+            uint16_t brightness = level * strength / 255;
+            rgb_matrix_set_color(i, (uint16_t)color.r * brightness / 255, (uint16_t)color.g * brightness / 255, (uint16_t)color.b * brightness / 255);
+            continue;
+        }
+        rgb_matrix_set_color(i, (uint16_t)palette[i].r * level / 255,
+                            (uint16_t)palette[i].g * level / 255, (uint16_t)palette[i].b * level / 255);
+    }
+}
+
+bool via_command_kb(uint8_t *data, uint8_t length) {
+    if (!companion_command(data, length)) return false;
+    raw_hid_send(data, length);
+    return true;
+}

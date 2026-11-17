@@ -1,0 +1,145 @@
+name: Build and release
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+concurrency:
+  group: clients-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: '3.50.0'
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: dart format --output=none --set-exit-if-changed lib bin test
+      - run: flutter analyze --no-pub
+      - run: flutter test --no-pub
+      - run: python3 test/firmware_protocol_test.py
+      - run: python3 -c "import hashlib,pathlib; p=pathlib.Path('firmware'); [(print(n), (_ for _ in ()).throw(ValueError(n)) if hashlib.sha256((p/n).read_bytes()).hexdigest()!=h else None) for h,n in (line.split() for line in (p/'SHA256SUMS').read_text().splitlines())]"
+
+  clients:
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: windows
+          - os: ubuntu-24.04
+            target: linux
+          - os: macos-15-intel
+            target: macos
+          - os: ubuntu-24.04
+            target: android
+          - os: macos-15-intel
+            target: ios
+          - os: ubuntu-24.04
+            target: web
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        if: matrix.target == 'android'
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - if: matrix.target == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev libhidapi-hidraw0
+      - if: matrix.target == 'macos'
+        run: brew install hidapi
+      - run: flutter pub get
+      - if: matrix.target == 'windows'
+        shell: pwsh
+        run: |
+          Invoke-WebRequest https://github.com/libusb/hidapi/releases/download/hidapi-0.15.0/hidapi-win.zip -OutFile "$env:RUNNER_TEMP/hidapi.zip"
+          Expand-Archive "$env:RUNNER_TEMP/hidapi.zip" "$env:RUNNER_TEMP/hidapi"
+          Invoke-WebRequest https://raw.githubusercontent.com/libusb/hidapi/hidapi-0.15.0/LICENSE-bsd.txt -OutFile "$env:RUNNER_TEMP/HIDAPI-LICENSE.txt"
+          $dll = Get-ChildItem "$env:RUNNER_TEMP/hidapi" -Recurse -Filter hidapi.dll | Where-Object FullName -match 'x64' | Select-Object -First 1
+          if (!$dll) { throw 'HIDAPI x64 library missing' }
+          flutter build windows --release
+          if ($LASTEXITCODE) { throw 'Native Windows build failed' }
+          Copy-Item $dll.FullName build/windows/x64/runner/Release/hidapi.dll
+          Copy-Item "$env:RUNNER_TEMP/HIDAPI-LICENSE.txt" build/windows/x64/runner/Release/
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Compress-Archive build/windows/x64/runner/Release/* dist/OpenKeyBoad-Windows-native-x64.zip
+          ./packaging/build-windows.ps1 -HidApi $dll.FullName -HidApiLicense "$env:RUNNER_TEMP/HIDAPI-LICENSE.txt"
+      - if: matrix.target == 'linux' || matrix.target == 'macos'
+        run: bash packaging/build-unix.sh ${{ matrix.target }}
+      - if: matrix.target == 'android'
+        shell: bash
+        run: |
+          flutter build apk --release
+          mkdir -p dist
+          cp build/app/outputs/flutter-apk/app-release.apk dist/OpenKeyBoad-Android.apk
+      - if: matrix.target == 'ios'
+        shell: bash
+        run: |
+          flutter build ios --release --no-codesign
+          mkdir -p dist build/unsigned/Payload
+          cp -R build/ios/iphoneos/Runner.app build/unsigned/Payload/
+          (cd build/unsigned && zip -qry ../../dist/OpenKeyBoad-iOS-unsigned.ipa Payload)
+      - if: matrix.target == 'web'
+        shell: bash
+        run: |
+          flutter build web --release --no-web-resources-cdn
+          mkdir -p dist
+          (cd build/web && zip -qry ../../dist/OpenKeyBoad-Web.zip .)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OpenKeyBoad-${{ matrix.target }}
+          path: |
+            dist/*.zip
+            dist/*.tar.gz
+            dist/*.apk
+            dist/*.ipa
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: [verify, clients]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: OpenKeyBoad-*
+          merge-multiple: true
+          path: release
+      - name: Package firmware and checksums
+        shell: bash
+        run: |
+          (cd firmware && zip -qry ../release/OpenKeyBoad-Firmware.zip .)
+          (cd release && sha256sum *.zip *.tar.gz *.apk *.ipa > SHA256SUMS)
+          echo "TAG=build-$(date -u +%Y%m%d)-${GITHUB_SHA:0:7}" >> "$GITHUB_ENV"
+      - name: Publish all clients
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" release/* --clobber
+            gh release edit "$TAG" --notes-file packaging/release-notes.txt --latest
+          else
+            gh release create "$TAG" release/* --target "$GITHUB_SHA" --title "OpenKeyBoad $TAG" --notes-file packaging/release-notes.txt --latest
+          fi

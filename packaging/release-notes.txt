@@ -1,0 +1,20 @@
+0.4.0: one Online switch, live network speed, Pomodoro, extended weather and system-output music lighting. New keyboard pages / music lighting require the matching bundled firmware (companion revision 4). System audio capture: Windows / Linux; other clients can use their bridge. No WAV player or manual LRC import.
+
+0.4.0：统一在线开关、实时网速、番茄钟、扩展天气和系统声音律动。新增键盘页面及音乐律动需刷入随附的对应型号固件（协议修订 4）。Windows / Linux 支持系统声音采集，其他客户端可通过它们的中继连接。不再提供 WAV 播放和手动 LRC 导入。
+
+OpenKeyBoad for Windows, macOS, Linux, Android, iOS and Web.
+
+Windows: extract and run KeyboardControl.exe; native Flutter app is also supplied.
+Linux: install libhidapi-hidraw0, playerctl and pulseaudio-utils. Install the included udev rules for USB access.
+macOS: the app is ad-hoc signed, not notarized. Allow media automation for Music / Spotify.
+Android APK uses a test signing key. iOS IPA is unsigned and must be signed before installation.
+Web/iOS can connect through the temporary LAN link printed by the desktop bridge.
+
+Includes the matching RS2 / AK650 firmware, VIA layouts and SHA-256 checksums.
+Firmware.zip contains the flashing helper. Use only the image matching the connected keyboard.
+
+Windows：解压运行 KeyboardControl.exe，也提供原生 Flutter 客户端。
+Linux：安装 libhidapi-hidraw0、playerctl、pulseaudio-utils，并安装随附的 udev 规则。
+macOS：应用为临时签名，未公证；歌词功能需允许读取 Music / Spotify。
+Android APK 使用测试签名，iOS IPA 未签名，需自行签名安装。
+手机/Web 可使用桌面中继显示的局域网临时连接链接。

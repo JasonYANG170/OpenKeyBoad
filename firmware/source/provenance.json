@@ -1,0 +1,5 @@
+{
+  "rs2": {"repository": "https://github.com/JasonYANG170/JamesDonkey-RS2-QMK", "baseCommit": "afc752c24dac0412b15bd2510a2403e665ef547f", "target": "jamesdonkey/rs2_30/reference:via"},
+  "ak650": {"repository": "https://github.com/JasonYANG170/AJAZZ-AK650-QMK", "baseCommit": "24d1b1cfa592fd462a263292301cf2c92bdd77c3", "target": "a_jazz/ak650/reference:via"},
+  "companionProtocol": {"version": 1, "revision": 4}
+}
