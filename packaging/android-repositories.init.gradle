@@ -1,0 +1,14 @@
+// Flutter's included plugin build otherwise resolves Kotlin's runtime through
+// the plugin portal alone. Fetch ordinary Maven artifacts directly from Central.
+gradle.beforeSettings { settings ->
+    settings.pluginManagement.repositories {
+        maven {
+            name = 'OpenKeyBoadPluginDependencies'
+            url = uri('https://repo.maven.apache.org/maven2')
+        }
+        maven {
+            name = 'OpenKeyBoadPluginPortal'
+            url = uri('https://plugins.gradle.org/m2')
+        }
+    }
+}

@@ -86,10 +86,9 @@ jobs:
         run: bash packaging/build-unix.sh ${{ matrix.target }}
       - if: matrix.target == 'android'
         shell: bash
-        run: |
-          flutter build apk --release
-          mkdir -p dist
-          cp build/app/outputs/flutter-apk/app-release.apk dist/OpenKeyBoad-Android.apk
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/openkeyboard-gradle
+        run: bash packaging/build-android.sh
       - if: matrix.target == 'ios'
         shell: bash
         run: |
