@@ -11,7 +11,7 @@ import time
 
 
 FIRMWARE = Path(__file__).resolve().parents[1] / "firmware"
-IMAGE = FIRMWARE / "RS2-VIA-0.3.3.bin"
+IMAGE = FIRMWARE / "RS2-VIA-0.3.4.bin"
 IMAGE_SIZE = 256 * 1024
 REPORT_SIZE = 64
 GET_VERSION, ERASE, PROGRAM, CHECKSUM, RUN = 1, 4, 5, 6, 7

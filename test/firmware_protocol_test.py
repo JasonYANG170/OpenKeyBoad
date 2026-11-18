@@ -27,6 +27,7 @@ bool rtc_set_time(const rtc_time_t*);
 TEST = r'''
 #include "companion.h"
 #include "rtc/rtc.h"
+#include "device_settings.h"
 #include <assert.h>
 static uint32_t clock_ms=100;
 uint32_t timer_read32(void){return clock_ms;}
@@ -37,10 +38,35 @@ uint8_t rgb_matrix_get_val(void){return 160;}
 void rgb_matrix_set_color(int i,uint8_t r,uint8_t g,uint8_t b){(void)i;(void)r;(void)g;(void)b;}
 bool rtc_set_time(const rtc_time_t*t){(void)t;return true;}
 void raw_hid_send(uint8_t *p,uint8_t n){(void)p;(void)n;}
+static uint8_t preferences[DS_COUNT]={0,0,2,0,5,1,0,0,0,1,1,0,1,1,75,0};
+static unsigned writes, actions;
+uint16_t device_settings_supported(void){return RGB_MATRIX_LED_COUNT==98?0xF7FF:0xFFFF;}
+uint16_t device_settings_writable(void){return device_settings_supported()&0x1FFF;}
+uint8_t device_settings_actions(void){return 0x3F;}
+uint8_t device_setting_read(uint8_t f){return preferences[f];}
+bool device_setting_write(uint8_t f,uint8_t v){preferences[f]=v;++writes;return true;}
+bool device_action_run(uint8_t a){actions|=1u<<a;return true;}
 static void send(uint8_t *p){assert(companion_command(p,32));assert(p[0]!=255);}
 int main(void){
  companion_view_t view={0};
- uint8_t caps[32]={8,81,0};send(caps);assert(caps[9]==5&&caps[7]==RGB_MATRIX_LED_COUNT);
+ uint8_t caps[32]={8,81,0};send(caps);assert(caps[9]==6&&caps[7]==RGB_MATRIX_LED_COUNT);
+ uint8_t prefs[32]={8,81,17};send(prefs);assert(prefs[3]==1&&prefs[4]==0&&prefs[14]==5&&prefs[24]==75);
+ assert(((prefs[5]<<8)|prefs[6])==device_settings_supported());
+ uint8_t theme[32]={7,81,17,DS_THEME,2,0};send(theme);assert(theme[4]==0&&theme[10]==2&&writes==1);
+ uint8_t stale[32]={7,81,17,DS_THEME,1,0};send(stale);assert(stale[4]==2&&stale[10]==2&&writes==1);
+ uint8_t invalid[32]={7,81,17,DS_BACKLIGHT,0,5};send(invalid);assert(invalid[4]==1&&preferences[DS_BACKLIGHT]==5);
+ uint8_t readonly[32]={7,81,17,DS_WIRED,0,1};send(readonly);assert(readonly[4]==1&&preferences[DS_WIRED]==1);
+ uint8_t outside[32]={7,81,17,255,0,0};send(outside);assert(outside[4]==1);
+ for(uint8_t field=0;field<13;field++){
+   if(!(device_settings_writable()&(1u<<field)))continue;
+   static const uint8_t targets[]={1,15,5,1,1,0,1,1,1,0,3,1,0};
+   uint8_t set[32]={7,81,17,field,targets[field],preferences[field]};send(set);
+   assert(set[4]==0&&set[10+field]==targets[field]);
+ }
+ uint8_t guarded[32]={7,81,18,DA_RESET};send(guarded);device_settings_task();assert(guarded[6]==1&&actions==0);
+ uint8_t wake[32]={7,81,18,DA_WAKE,0xA5,0x5A};send(wake);assert(wake[6]==0&&actions==(1u<<DA_WAKE));
+ uint8_t isp[32]={7,81,18,DA_ISP,0xA5,0x5A};send(isp);assert(isp[6]==0);
+ device_settings_task();assert(!(actions&(1u<<DA_ISP)));clock_ms+=250;device_settings_task();assert(actions&(1u<<DA_ISP));
  assert(companion_changed(&view,1)==0);
  uint8_t monitor[32]={7,81,3,17,36,42,68};send(monitor);assert(companion_changed(&view,1)==7);
  clock_ms+=100;send(monitor);assert(companion_changed(&view,1)==0);
@@ -117,7 +143,8 @@ def main():
             output=tmp/model
             subprocess.run(['gcc','-std=c11','-Wall','-Wextra','-Werror','-fsanitize=address,undefined',
                 f'-DCOMPANION_WIDTH={width}',f'-DRGB_MATRIX_LED_COUNT={leds}',
-                '-I',str(tmp),'-I',str(source),str(tmp/'test.c'),str(source/'companion.c'),'-o',str(output)],check=True)
+                '-I',str(tmp),'-I',str(source),'-I',str(ROOT/'firmware/source/common'),
+                str(tmp/'test.c'),str(source/'companion.c'),str(ROOT/'firmware/source/common/device_settings.c'),'-o',str(output)],check=True)
             subprocess.run([str(output)],check=True)
             print(model+': independent data, stable heartbeats, dirty bands, expiry and bounds verified')
 if __name__=='__main__':main()

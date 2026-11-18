@@ -10,6 +10,7 @@ import 'local_service.dart';
 import 'models.dart';
 import 'palette.dart';
 import 'features_panel.dart';
+import 'device_settings_panel.dart';
 import 'chords.dart';
 import 'chord_dialog.dart';
 
@@ -432,6 +433,24 @@ class _WorkbenchState extends State<_Workbench> {
                     ],
                     const SizedBox(height: 16),
                     _footer(),
+                    const SizedBox(height: 16),
+                    _Panel(
+                      child: DeviceSettingsPanel(
+                        board: board,
+                        device: device,
+                        service: service,
+                        busy: busy,
+                        run: (action, label) => _task(() async {
+                          await action();
+                          if (mounted) {
+                            setState(() => status = '键盘设置操作已完成。');
+                          }
+                        }, label),
+                        beforeDeparture: () async {
+                          await featureKey.currentState?.stopOnline();
+                        },
+                      ),
+                    ),
                     const SizedBox(height: 16),
                     _Panel(
                       child: FeaturesPanel(

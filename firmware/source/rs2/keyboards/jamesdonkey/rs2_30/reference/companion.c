@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "companion.h"
+#include "device_settings.h"
 #include "rtc/rtc.h"
 
 companion_state_t companion = {.cpu = 255, .memory = 255, .gpu = 255, .disk = 255, .page_request = 255, .minimum = 32767, .maximum = 32767, .aqi = 65535, .pm25 = 65535, .rain = 255, .uv = 255};
@@ -29,11 +30,12 @@ static bool valid_time(const rtc_time_t *t) {
 
 bool companion_command(uint8_t *data, uint8_t length) {
     if (length != 32 || data[1] != COMPANION_CHANNEL || (data[0] != 7 && data[0] != 8)) return false;
+    if (device_settings_command(data, length)) return true;
     uint8_t op = data[2];
     uint8_t *p = data + 3;
     if (data[0] == 8 && op == 0) {
         p[0] = 1; p[1] = 0x7f; p[2] = COMPANION_WIDTH; p[3] = 20;
-        p[4] = RGB_MATRIX_LED_COUNT; p[5] = light_mode; p[6] = 5; p[7] = 20; p[8] = 18;
+        p[4] = RGB_MATRIX_LED_COUNT; p[5] = light_mode; p[6] = 6; p[7] = 20; p[8] = 18;
         return true;
     }
     if (data[0] == 8 && op == 10) {

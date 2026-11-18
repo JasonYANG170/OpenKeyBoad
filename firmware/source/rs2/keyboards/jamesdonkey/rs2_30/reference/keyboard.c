@@ -200,3 +200,17 @@ bool rgb_matrix_indicators_user(void) {
     companion_indicators();
     return true;
 }
+
+uint8_t rs2_wireless_profile(void) { return (uint8_t)profile - 0x30; }
+bool rs2_set_wireless_profile(uint8_t value) {
+    if (value > 3) return false;
+    ch582_profile_t next = (ch582_profile_t)(0x30 + value);
+    if (profile != next) {
+        profile = next;
+        uint32_t stored = next;
+        eeconfig_update_kb_datablock(&stored, 0, sizeof(stored));
+    }
+    if (!wired) ch582_set_profile(profile);
+    rs2_screen_connection_changed();
+    return true;
+}

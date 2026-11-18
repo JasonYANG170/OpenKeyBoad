@@ -36,3 +36,10 @@ void rs2_rgb_start(void);
 uint32_t rs2_rgb_get_sweep_count(void);
 bool rs2_rgb_is_running(void);
 void rs2_matrix_scan_pulse(void);
+
+bool rs2_screen_media_enabled(void);
+void rs2_screen_set_media(bool enabled);
+bool rs2_screen_enabled(void);
+void rs2_screen_set_enabled(bool enabled);
+uint8_t rs2_wireless_profile(void);
+bool rs2_set_wireless_profile(uint8_t value);

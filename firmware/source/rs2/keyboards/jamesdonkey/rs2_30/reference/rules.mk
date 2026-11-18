@@ -22,3 +22,6 @@ SRC += companion.c
 OPT_DEFS += -DCOMPANION_WIDTH=240
 
 SRC += fonts/online_ascii_10.qff.c
+
+VPATH += keyboards/openkeyboard/common
+SRC += device_settings.c

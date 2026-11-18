@@ -46,6 +46,7 @@ apply_patch_once() {
 }
 apply_patch_once "$qmk" "$root/patches/ak650-platform.patch"
 apply_patch_once "$qmk" "$root/patches/ak650-wireless-leds.patch"
+apply_patch_once "$qmk" "$root/patches/ak650-settings.patch"
 for patch in hardware_pwm i2c_fallback rtc_lld spi_fifo_pump spi_flash_dma efl_ramtext; do
     apply_patch_once "$qmk/lib/chibios-contrib" "$qmk/keyboards/a_jazz/ak820pro/$patch.diff"
 done
@@ -57,6 +58,8 @@ fi
 export PATH="$venv/bin:$PATH"
 
 mkdir -p "$qmk/$board" "$root/dist"
+mkdir -p "$qmk/keyboards/openkeyboard/common"
+cp -R "${OPENKEYBOARD_COMMON_DIR:-$root/../common}/." "$qmk/keyboards/openkeyboard/common/"
 cp -R "$root/$board/." "$qmk/$board/"
 cd "$qmk"
 python3 "$board/generate_reference.py"

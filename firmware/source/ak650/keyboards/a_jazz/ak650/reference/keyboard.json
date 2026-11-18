@@ -6,7 +6,7 @@
     "usb": {
         "vid": "0x05AC",
         "pid": "0x024F",
-        "device_version": "0.3.8"
+        "device_version": "0.3.9"
     },
     "dynamic_keymap": {
         "layer_count": 4

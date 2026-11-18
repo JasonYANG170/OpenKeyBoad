@@ -24,6 +24,7 @@ static bool illuminated;
 static bool connection_changed;
 static bool panel_io_failed;
 static bool media_hidden;
+static bool screen_enabled = true;
 static uint32_t last_refresh;
 static virtual_timer_t backlight_timer;
 static uint8_t backlight_target = DISPLAY_BACKLIGHT_LEVELS;
@@ -223,7 +224,7 @@ void rs2_screen_toggle_media(void) {
 void rs2_screen_task(bool wired) {
     if (!panel || !small_font || !large_font) return;
     uint32_t idle_timeout = display_idle_timeout_ms();
-    bool draw = !(wired && USB_DRIVER.state == USB_SUSPENDED) &&
+    bool draw = screen_enabled && !(wired && USB_DRIVER.state == USB_SUSPENDED) &&
                 (!idle_timeout || last_input_activity_elapsed() < idle_timeout);
     bool wake = draw && !drawing;
     drawing = draw;
@@ -248,3 +249,8 @@ void rs2_screen_task(bool wired) {
     // On wake, keep the LED off until the first dashboard is in panel RAM.
     update_backlight(illuminated || !rs2_dashboard_pending());
 }
+
+bool rs2_screen_media_enabled(void) { return !media_hidden; }
+void rs2_screen_set_media(bool enabled) { media_hidden = !enabled; connection_changed = true; }
+bool rs2_screen_enabled(void) { return screen_enabled; }
+void rs2_screen_set_enabled(bool enabled) { screen_enabled = enabled; connection_changed = true; }

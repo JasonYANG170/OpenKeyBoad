@@ -49,6 +49,8 @@ fi
 export PATH="$venv/bin:$PATH"
 
 mkdir -p "$qmk/$board" "$dist"
+mkdir -p "$qmk/keyboards/openkeyboard/common"
+cp -R "${OPENKEYBOARD_COMMON_DIR:-$root/../common}/." "$qmk/keyboards/openkeyboard/common/"
 cp -R "$root/$board/." "$qmk/$board/"
 make -C "$qmk" SKIP_GIT=yes -j "${JOBS:-$(nproc)}" "$target:via"
 

@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 typedef Json = Map<String, dynamic>;
-const consoleVersion = '0.4.1';
+const consoleVersion = '0.5.0';
 
 int bounded(dynamic value, int max, String field) {
   if (value is! int || value < 0 || value > max) {

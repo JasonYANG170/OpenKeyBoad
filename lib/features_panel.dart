@@ -72,6 +72,7 @@ class FeaturesPanelState extends State<FeaturesPanel> {
   String _monitorStatus = '连接后自动同步主机资源。';
 
   Future<void> settleBackground() => _work.activeIdle;
+  Future<void> stopOnline() => _setOnline(false);
   void resumeBackground() => _work.wake();
   Duration get _systemPosition {
     final base = (_systemTrack['position'] as num? ?? 0).toInt();

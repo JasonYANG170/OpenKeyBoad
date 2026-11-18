@@ -7,7 +7,7 @@
 | 键盘 | [JamesDonkey RS2 3.0](https://github.com/JasonYANG170/JamesDonkey-RS2-QMK)、[AJAZZ AK650](https://github.com/JasonYANG170/AJAZZ-AK650-QMK) |
 | 客户端 | Windows、macOS、Linux、Android、iOS、Web |
 | 技术 | Flutter 3.50 / Dart 3.14、VIA 12、HID |
-| 配置 | 四层改键、旋钮、组合键、逐键 RGB、动态灯效 |
+| 配置 | 四层改键、旋钮、组合键、逐键 RGB、动态灯效、屏幕外观、休眠、系统映射、无线槽位 |
 | 彩屏 | 系统歌词、扩展天气、资源监控、实时网速、番茄钟、校时 |
 
 ## 构建

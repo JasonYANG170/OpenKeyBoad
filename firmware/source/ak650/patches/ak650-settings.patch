@@ -1,0 +1,28 @@
+--- a/keyboards/a_jazz/ak820pro/ak820pro.c
++++ b/keyboards/a_jazz/ak820pro/ak820pro.c
+@@ -637,3 +637,15 @@
+         else            display_exit_sleep();
+     }
+ }
++
++
++// Host controls preserve the physical USB/BT/2.4G slider as the routing owner.
++uint8_t openkeyboard_wireless_profile(void) {
++    return wireless_mode == WL_MODE_24G ? 0 : (uint8_t)last_bt_profile - 0x30;
++}
++bool openkeyboard_set_wireless_profile(uint8_t value) {
++    if (value < 1 || value > 3 || wireless_mode == WL_MODE_24G) return false;
++    save_bt_profile((ch582_profile_t)(0x30 + value));
++    if (wireless_mode == WL_MODE_BT) ch582_set_profile(last_bt_profile);
++    return true;
++}
+--- a/keyboards/a_jazz/ak820pro/graphics/display_qp.c
++++ b/keyboards/a_jazz/ak820pro/graphics/display_qp.c
+@@ -593,3 +593,7 @@
+         qp_drawimage(qp_display, 32, 0, qp_2_4g_logo);
+ #endif
+ }
++
++
++bool openkeyboard_media_enabled(void) { return !s_force_clock; }
++void openkeyboard_set_media(bool enabled) { s_force_clock = !enabled; }

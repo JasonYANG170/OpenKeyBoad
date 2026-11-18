@@ -3,6 +3,8 @@
 #include "ak650.h"
 #include "calculator.h"
 #include "companion.h"
+#include "device_settings.h"
+#include "connection.h"
 #include "bluetooth/ch582f_ajazz.h"
 #include "graphics/display.h"
 #include "graphics/lcd_bus.h"
@@ -171,6 +173,90 @@ static void update_charge_state(void) {
 }
 
 
+
+
+bool openkeyboard_media_enabled(void);
+void openkeyboard_set_media(bool enabled);
+uint8_t openkeyboard_wireless_profile(void);
+bool openkeyboard_set_wireless_profile(uint8_t value);
+static bool board_media_enabled(void) { return openkeyboard_media_enabled(); }
+static void board_set_media(bool enabled) { openkeyboard_set_media(enabled); }
+static bool board_screen_enabled(void) { return display_get_power(); }
+static void board_set_screen(bool enabled) { display_set_power(enabled); }
+static uint8_t board_wireless_profile(void) { return openkeyboard_wireless_profile(); }
+static bool board_set_wireless_profile(uint8_t value) { return openkeyboard_set_wireless_profile(value); }
+
+uint16_t device_settings_supported(void) { return 0xFFFFu; }
+uint16_t device_settings_writable(void) { return openkeyboard_wireless_profile() == 0 ? 0x1BFFu : 0x1FFFu; }
+uint8_t device_settings_actions(void) { return connection_get_host() == CONNECTION_HOST_USB ? 0x37u : 0x3Fu; }
+
+uint8_t device_setting_read(uint8_t field) {
+    switch (field) {
+        case DS_THEME: return appearance;
+        case DS_ACCENT: return accent_color;
+        case DS_TIMEOUT: return screen_timeout;
+        case DS_ENGLISH: return english;
+        case DS_BACKLIGHT: return backlight;
+        case DS_RGB_ENABLED: return rgb_matrix_is_enabled();
+        case DS_MAC: return keymap_config.swap_lalt_lgui;
+        case DS_GUI_LOCK: return keymap_config.no_gui;
+        case DS_ENCODER: return screen_interaction;
+        case DS_MEDIA: return board_media_enabled();
+        case DS_PROFILE: return board_wireless_profile();
+        case DS_FKEYS: return fkeys_first;
+        case DS_SCREEN: return board_screen_enabled();
+        case DS_WIRED: return connection_get_host() == CONNECTION_HOST_USB;
+        case DS_BATTERY: return ch582_get_battery();
+        case DS_CONNECTION: return ch582_get_conn_state();
+        default: return 255;
+    }
+}
+
+bool device_setting_write(uint8_t field, uint8_t value) {
+    switch (field) {
+        case DS_THEME: appearance = value; preferences_pending = true; break;
+        case DS_ACCENT: accent_color = value; preferences_pending = true; break;
+        case DS_TIMEOUT: screen_timeout = value; preferences_pending = true; break;
+        case DS_ENGLISH: english = value; preferences_pending = true; break;
+        case DS_BACKLIGHT:
+            backlight = value; display_set_backlight_level(value); preferences_pending = true; break;
+        case DS_RGB_ENABLED:
+            if (value) rgb_matrix_enable_noeeprom(); else rgb_matrix_disable_noeeprom();
+            rgb_settle_arm(); break;
+        case DS_MAC:
+            clear_keyboard();
+            keymap_config.swap_lalt_lgui = value; keymap_config.swap_ralt_rgui = value;
+            eeconfig_update_keymap(&keymap_config); break;
+        case DS_GUI_LOCK:
+            clear_keyboard(); keymap_config.no_gui = value;
+            eeconfig_update_keymap(&keymap_config); break;
+        case DS_ENCODER:
+            screen_interaction = value; view = HOME; control = BROWSE; page_detail = false; break;
+        case DS_MEDIA: board_set_media(value); break;
+        case DS_PROFILE: return board_set_wireless_profile(value);
+        case DS_FKEYS: fkeys_first = value; preferences_pending = true; break;
+        case DS_SCREEN: board_set_screen(value); break;
+        default: return false;
+    }
+    activity = timer_read32(); redraw = true;
+    return true;
+}
+
+bool device_action_run(uint8_t action) {
+    switch (action) {
+        case DA_DIM: tap_code16(KC_BRID); break;
+        case DA_BRIGHTEN: tap_code16(KC_BRIU); break;
+        case DA_WAKE:
+            board_set_screen(true); companion.screen_activity = timer_read32(); break;
+        case DA_PAIR:
+            // Pair the remembered wireless profile without changing USB routing.
+            ch582_pair((ch582_profile_t)(0x30 + board_wireless_profile())); break;
+        case DA_ISP: reset_keyboard(); break;
+        case DA_RESET: eeconfig_disable(); soft_reset_keyboard(); break;
+        default: return false;
+    }
+    return true;
+}
 
 static const char *translated(translation_t value) { return english ? value.en : value.zh; }
 static const char *tr(const char *en, const char *zh) { return translated((translation_t){en, zh}); }
@@ -526,6 +612,7 @@ bool rgb_matrix_indicators_kb(void) {
 }
 
 void housekeeping_task_user(void) {
+    device_settings_task();
     if (companion.page_request != 255) {
         static const enum dashboard_page remote_pages[] = {PAGE_HOME, PAGE_MONITOR, PAGE_WEATHER, PAGE_LYRICS, PAGE_NETWORK, PAGE_TIMER};
         enum dashboard_page requested = remote_pages[companion.page_request];

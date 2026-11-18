@@ -85,7 +85,7 @@ def generate():
 
     keyboard["keyboard_name"] = "AK650 QMK Reference"
     keyboard["url"] = "https://ajazzstore.com/products/ajazz-ak650"
-    keyboard["usb"] = {"vid": VID, "pid": PID, "device_version": "0.3.5"}
+    keyboard["usb"] = {"vid": VID, "pid": PID, "device_version": "0.3.9"}
     keyboard["layouts"] = {"LAYOUT_67_ansi": {"layout": layout}}
     keyboard["rgb_matrix"]["layout"] = led_layout
     keyboard["indicators"] = {"caps_lock": "B0", "on_state": 1}

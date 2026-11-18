@@ -7,7 +7,7 @@
   "usb": {
     "vid": "0xFEED",
     "pid": "0x5232",
-    "device_version": "0.3.3"
+    "device_version": "0.3.4"
   },
   "features": {
     "extrakey": true,

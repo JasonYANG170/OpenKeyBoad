@@ -7,7 +7,7 @@
 | Keyboards | [JamesDonkey RS2 3.0](https://github.com/JasonYANG170/JamesDonkey-RS2-QMK), [AJAZZ AK650](https://github.com/JasonYANG170/AJAZZ-AK650-QMK) |
 | Clients | Windows, macOS, Linux, Android, iOS, Web |
 | Stack | Flutter 3.50 / Dart 3.14, VIA 12, HID |
-| Configuration | Four layers, encoder, chords, per-key RGB, animated lighting |
+| Configuration | Four layers, encoder, chords, per-key RGB, animated lighting, display preferences, sleep, OS mapping, wireless slots |
 | Keyboard display | System lyrics, extended weather, resources, live network speed, Pomodoro, clock sync |
 
 ## Build
