@@ -476,26 +476,32 @@ class _WorkbenchState extends State<_Workbench> {
             child: const Icon(Icons.keyboard_outlined, color: Colors.white),
           ),
           const SizedBox(width: 12),
-          const Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'OpenKeyBoad',
-                style: TextStyle(
-                  color: _ink,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 23,
+          const Flexible(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'OpenKeyBoad',
+                    style: TextStyle(
+                      color: _ink,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 23,
+                    ),
+                  ),
                 ),
-              ),
-              Text(
-                'RS2 3.0 / AK650 · v$consoleVersion',
-                style: TextStyle(
-                  color: _muted,
-                  fontSize: 12,
-                  letterSpacing: 0.5,
+                Text(
+                  'RS2 3.0 / AK650 · v$consoleVersion',
+                  style: TextStyle(
+                    color: _muted,
+                    fontSize: 12,
+                    letterSpacing: 0.5,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
       ),

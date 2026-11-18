@@ -34,5 +34,8 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(390, 844));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
+    await tester.binding.setSurfaceSize(const Size(320, 800));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
   });
 }

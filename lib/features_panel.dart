@@ -12,6 +12,7 @@ import 'models.dart';
 import 'palette.dart';
 import 'serial_work.dart';
 import 'online_models.dart';
+import 'online_card.dart';
 
 class FeaturesPanel extends StatefulWidget {
   const FeaturesPanel({
@@ -1046,8 +1047,7 @@ class FeaturesPanelState extends State<FeaturesPanel> {
 
   @override
   Widget build(BuildContext context) {
-    final enabled = !_sending && !widget.locked;
-    final live = enabled && _connected;
+    final live = !_sending && !widget.locked && _connected;
     final position = _systemPosition;
     final duration = (_systemTrack['duration'] as num? ?? 0).toInt();
     return ExpansionTile(
@@ -1074,11 +1074,15 @@ class FeaturesPanelState extends State<FeaturesPanel> {
           spacing: 12,
           runSpacing: 12,
           children: [
-            _card(
-              '实时网速',
-              Column(
+            OnlineCard(
+              title: '实时网速',
+              details: const Text(
+                '显示桌面主机物理网卡的总收发速率，单位为 B/s、KB/s 或 MB/s。虚拟网卡与回环接口不重复累计。',
+              ),
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  const SizedBox(height: 14),
                   _rateLine(
                     Icons.south_rounded,
                     '下载',
@@ -1088,7 +1092,7 @@ class FeaturesPanelState extends State<FeaturesPanel> {
                           : null,
                     ),
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 18),
                   _rateLine(
                     Icons.north_rounded,
                     '上传',
@@ -1098,29 +1102,33 @@ class FeaturesPanelState extends State<FeaturesPanel> {
                           : null,
                     ),
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 18),
                   Text(
                     _network['supported'] == true
                         ? '物理网卡合计 · 每秒更新'
                         : '在线后读取桌面主机网速',
                     style: const TextStyle(fontSize: 12),
                   ),
-                  const SizedBox(height: 12),
                 ],
               ),
             ),
             _pomodoroCard(live),
-            _card(
-              '系统音乐律动',
-              Column(
+            OnlineCard(
+              title: '系统音乐律动',
+              details: const Text(
+                '读取系统输出声音，不保存录音。Windows 使用 WASAPI，Linux 需要 parec。其他客户端可以通过 Windows / Linux 桌面端连接链接使用。静音时灯光自动衰减。',
+              ),
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Icon(Icons.graphic_eq, size: 42),
-                  const SizedBox(height: 12),
                   DropdownButtonFormField<int>(
                     key: const ValueKey('system-audio-mode'),
                     initialValue: _musicMode,
-                    decoration: const InputDecoration(labelText: '律动方式'),
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      labelText: '律动方式',
+                      isDense: true,
+                    ),
                     items: const [
                       DropdownMenuItem(value: 0, child: Text('关闭律动')),
                       DropdownMenuItem(value: 1, child: Text('逐键配色随音量')),
@@ -1131,7 +1139,7 @@ class FeaturesPanelState extends State<FeaturesPanel> {
                         ? (mode) => unawaited(_changeMusic(mode ?? 0))
                         : null,
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
                   SizedBox(
                     height: 50,
                     child: Row(
@@ -1156,36 +1164,38 @@ class FeaturesPanelState extends State<FeaturesPanel> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  Text(_audioStatus, style: const TextStyle(fontSize: 12)),
-                  const SizedBox(height: 8),
-                  const Text(
-                    '读取系统输出声音，不保存录音。Windows / Linux 支持；手机可通过桌面端连接。',
-                    style: TextStyle(fontSize: 12),
+                  Text(
+                    _audioStatus,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 12),
                   ),
                 ],
               ),
             ),
-            _card(
-              '系统歌词',
-              Column(
+            OnlineCard(
+              title: '系统歌词',
+              details: Text(
+                '${_systemTrack['title'] ?? '等待系统播放器'}\n${_systemTrack['artist'] ?? ''}\n${_systemTrack['album'] ?? ''}\n\n$_lyricStatus',
+              ),
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.lyrics_outlined),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          _systemTrack['title'] as String? ?? '等待系统播放器',
-                          style: const TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                      ),
-                    ],
+                  Text(
+                    _systemTrack['title'] as String? ?? '等待系统播放器',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
-                  if ((_systemTrack['artist'] as String? ?? '').isNotEmpty)
-                    Text(_systemTrack['artist'] as String),
-                  const SizedBox(height: 12),
+                  Text(
+                    _systemTrack['artist'] as String? ?? '',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                  const SizedBox(height: 10),
                   LinearProgressIndicator(
+                    minHeight: 4,
                     value: duration > 0
                         ? (position.inMilliseconds / duration).clamp(0, 1)
                         : 0,
@@ -1194,6 +1204,8 @@ class FeaturesPanelState extends State<FeaturesPanel> {
                   Text(
                     lyricAt(_systemLyrics, position)?.text ??
                         '播放系统音乐后自动匹配同步歌词。',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 8),
                   Text(
@@ -1202,13 +1214,15 @@ class FeaturesPanelState extends State<FeaturesPanel> {
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontSize: 12),
                   ),
-                  const SizedBox(height: 12),
                 ],
               ),
             ),
-            _card(
-              '主机监视器',
-              Column(
+            OnlineCard(
+              title: '主机监视器',
+              details: const Text(
+                'CPU、内存、GPU 为使用率；系统盘显示空间占用率。GPU 无法读取时显示 --。手机通过桌面中继连接时显示电脑数据，采样不会阻塞键盘通信。',
+              ),
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   for (var i = 0; i < 4; i++)
@@ -1217,101 +1231,49 @@ class FeaturesPanelState extends State<FeaturesPanel> {
                       child: Row(
                         children: [
                           SizedBox(
-                            width: 72,
-                            child: Text(['CPU', '内存', 'GPU', '系统盘'][i]),
+                            width:
+                                56 *
+                                MediaQuery.textScalerOf(context).scale(14) /
+                                14,
+                            child: Text(
+                              ['CPU', '内存', 'GPU', '系统盘'][i],
+                              style: const TextStyle(fontSize: 14),
+                            ),
                           ),
                           Expanded(
                             child: LinearProgressIndicator(
+                              minHeight: 6,
                               value: _metrics[i] > 100 ? 0 : _metrics[i] / 100,
                             ),
                           ),
                           SizedBox(
-                            width: 45,
-                            child: Text(
-                              _metrics[i] > 100 ? ' --' : ' ${_metrics[i]}%',
+                            width:
+                                42 *
+                                MediaQuery.textScalerOf(context).scale(13) /
+                                13,
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerRight,
+                              child: Text(
+                                _metrics[i] > 100 ? '--' : '${_metrics[i]}%',
+                                maxLines: 1,
+                                style: const TextStyle(fontSize: 13),
+                              ),
                             ),
                           ),
                         ],
                       ),
                     ),
-                  Text(_monitorStatus, style: const TextStyle(fontSize: 12)),
-                  const SizedBox(height: 8),
-                  const Text(
-                    '系统盘显示空间占用率，GPU 不可读时显示 --。',
-                    style: TextStyle(fontSize: 12),
-                  ),
-                  const SizedBox(height: 12),
-                ],
-              ),
-            ),
-            _card(
-              '天气',
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  TextFormField(
-                    initialValue: _city,
-                    textInputAction: TextInputAction.done,
-                    decoration: const InputDecoration(
-                      labelText: '城市',
-                      helperText: '输入城市后按回车更新',
-                    ),
-                    onChanged: (value) => _city = value,
-                    onFieldSubmitted: (_) {
-                      _weatherCity = _city.trim();
-                      if (_online) unawaited(_weatherUpdate());
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  if (_weather != null) ...[
-                    Icon(
-                      _weather!.code == 0
-                          ? Icons.wb_sunny_outlined
-                          : _weather!.code < 50
-                          ? Icons.cloud_outlined
-                          : Icons.umbrella_outlined,
-                      size: 40,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '${_weather!.temperature.toStringAsFixed(1)} °C',
-                      style: const TextStyle(
-                        fontSize: 30,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    Text(_weather!.name),
-                    const SizedBox(height: 12),
-                    Text(
-                      '今日 ${_weather!.minimum?.toStringAsFixed(0) ?? "--"}° / ${_weather!.maximum?.toStringAsFixed(0) ?? "--"}° · 湿度 ${_weather!.humidity}%',
-                    ),
-                    Text(
-                      '降雨 ${_weather!.rain == null ? "--" : "${_weather!.rain}%"} · UV ${_weather!.uv?.toStringAsFixed(1) ?? "--"}',
-                    ),
-                    Text(
-                      'AQI ${_weather!.aqi ?? "--"} · PM2.5 ${_weather!.pm25?.toStringAsFixed(1) ?? "--"} μg/m³',
-                    ),
-                    const Text(
-                      'AQI 采用美国标准；空气质量不可用时显示 --。',
-                      style: TextStyle(fontSize: 11),
-                    ),
-                  ],
-                  const SizedBox(height: 8),
                   Text(
-                    _weatherStatus,
+                    _monitorStatus,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontSize: 12),
                   ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Open-Meteo · 在线时每 15 分钟更新',
-                    style: TextStyle(fontSize: 12),
-                  ),
-                  const SizedBox(height: 12),
                 ],
               ),
             ),
+            _weatherCard(live),
           ],
         ),
         const SizedBox(height: 12),
@@ -1326,64 +1288,34 @@ class FeaturesPanelState extends State<FeaturesPanel> {
 
   Widget _rateLine(IconData icon, String label, String value) => Row(
     children: [
-      Icon(icon, color: Theme.of(context).colorScheme.primary, size: 28),
-      const SizedBox(width: 10),
-      Expanded(child: Text(label)),
-      Text(
-        value,
-        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 20),
+      Icon(icon, size: 26, color: Theme.of(context).colorScheme.primary),
+      const SizedBox(width: 8),
+      Text(label, style: const TextStyle(fontSize: 14)),
+      const SizedBox(width: 8),
+      Expanded(
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerRight,
+          child: Text(
+            value,
+            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+          ),
+        ),
       ),
     ],
   );
 
-  Widget _pomodoroCard(bool live) => _card(
-    '番茄钟',
-    Column(
+  Widget _pomodoroCard(bool live) => OnlineCard(
+    title: '番茄钟',
+    details: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Center(
-          child: SizedBox(
-            width: 132,
-            height: 132,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                SizedBox.expand(
-                  child: CircularProgressIndicator(
-                    value:
-                        1 -
-                        _pomodoro.remaining.inMilliseconds /
-                            _pomodoro.total.inMilliseconds,
-                    strokeWidth: 7,
-                  ),
-                ),
-                Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.timer_outlined),
-                    Text(
-                      _pomodoro.clock,
-                      style: const TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    Text(_pomodoro.label),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 14),
-        Text(
-          '已完成 ${_pomodoro.completed} 轮 · 每 4 轮长休息',
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 12),
-        Row(
+        Wrap(
+          spacing: 8,
+          runSpacing: 12,
           children: [
-            Expanded(
+            SizedBox(
+              width: 82,
               child: _durationPicker(
                 '专注',
                 _pomodoro.focusMinutes,
@@ -1396,8 +1328,8 @@ class FeaturesPanelState extends State<FeaturesPanel> {
                 ),
               ),
             ),
-            const SizedBox(width: 6),
-            Expanded(
+            SizedBox(
+              width: 82,
               child: _durationPicker(
                 '短休',
                 _pomodoro.breakMinutes,
@@ -1410,8 +1342,8 @@ class FeaturesPanelState extends State<FeaturesPanel> {
                 ),
               ),
             ),
-            const SizedBox(width: 6),
-            Expanded(
+            SizedBox(
+              width: 82,
               child: _durationPicker(
                 '长休',
                 _pomodoro.longBreakMinutes,
@@ -1427,40 +1359,105 @@ class FeaturesPanelState extends State<FeaturesPanel> {
           ],
         ),
         const SizedBox(height: 12),
-        FilledButton.icon(
-          onPressed: live && _online
-              ? () {
-                  setState(() {
-                    if (_pomodoro.running) {
-                      _pomodoro.pause();
-                    } else {
-                      _pomodoro.start();
-                    }
-                  });
-                  unawaited(_syncPomodoro(claim: true));
-                }
-              : null,
-          icon: Icon(_pomodoro.running ? Icons.pause : Icons.play_arrow),
-          label: Text(
-            _pomodoro.running
-                ? '暂停'
-                : _pomodoro.done
-                ? '开始下一轮'
-                : '开始 / 继续',
-          ),
+        const Text(
+          '每 4 轮专注后进入长休息。完成后手动开始下一轮，关闭在线功能会暂停倒计时。',
+          style: TextStyle(fontSize: 12),
         ),
+      ],
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            SizedBox(
+              width: 82,
+              height: 82,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  SizedBox.expand(
+                    child: CircularProgressIndicator(
+                      value:
+                          1 -
+                          _pomodoro.remaining.inMilliseconds /
+                              _pomodoro.total.inMilliseconds,
+                      strokeWidth: 5,
+                      backgroundColor: Theme.of(context)
+                          .colorScheme
+                          .primaryContainer,
+                    ),
+                  ),
+                  const Icon(Icons.timer_outlined, size: 30),
+                ],
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      _pomodoro.clock,
+                      style: const TextStyle(
+                        fontSize: 30,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  Text(_pomodoro.label),
+                  Text(
+                    '已完成 ${_pomodoro.completed} 轮',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        Text(
+          '专注 ${_pomodoro.focusMinutes} 分 · 休息 ${_pomodoro.breakMinutes} 分',
+          style: const TextStyle(fontSize: 12),
+        ),
+        const SizedBox(height: 12),
         Row(
           children: [
             Expanded(
-              child: TextButton(
-                onPressed: live
+              child: FilledButton.icon(
+                onPressed: live && _online
                     ? () {
-                        setState(_pomodoro.reset);
+                        setState(() {
+                          if (_pomodoro.running) {
+                            _pomodoro.pause();
+                          } else {
+                            _pomodoro.start();
+                          }
+                        });
                         unawaited(_syncPomodoro(claim: true));
                       }
                     : null,
-                child: const Text('重置本轮'),
+                icon: Icon(_pomodoro.running ? Icons.pause : Icons.play_arrow),
+                label: Text(
+                  _pomodoro.running
+                      ? '暂停'
+                      : _pomodoro.done
+                      ? '下一轮'
+                      : '开始 / 继续',
+                ),
               ),
+            ),
+            IconButton(
+              tooltip: '重置本轮',
+              onPressed: live
+                  ? () {
+                      setState(_pomodoro.reset);
+                      unawaited(_syncPomodoro(claim: true));
+                    }
+                  : null,
+              icon: const Icon(Icons.restart_alt),
             ),
           ],
         ),
@@ -1478,7 +1475,11 @@ class FeaturesPanelState extends State<FeaturesPanel> {
     key: ValueKey('$label$value'),
     initialValue: value,
     isExpanded: true,
-    decoration: InputDecoration(labelText: label),
+    decoration: InputDecoration(
+      labelText: label,
+      isDense: true,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+    ),
     items: [
       for (final n in options)
         DropdownMenuItem(
@@ -1496,26 +1497,100 @@ class FeaturesPanelState extends State<FeaturesPanel> {
         : null,
   );
 
-  Widget _card(String title, Widget child) => SizedBox(
-    width: 310,
-    height: 540,
-    key: ValueKey("online-card-$title"),
-    child: Card(
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(15),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              title,
-              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 17),
-            ),
-            const SizedBox(height: 12),
-            Expanded(child: child),
-          ],
+  Widget _weatherCard(bool live) => OnlineCard(
+    title: '天气',
+    details: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextFormField(
+          initialValue: _city,
+          textInputAction: TextInputAction.done,
+          decoration: const InputDecoration(
+            labelText: '城市',
+            helperText: '输入城市后按回车更新',
+            isDense: true,
+          ),
+          onChanged: (v) => _city = v,
+          onFieldSubmitted: (_) {
+            _weatherCity = _city.trim();
+            if (_online) unawaited(_weatherUpdate());
+          },
         ),
-      ),
+        const SizedBox(height: 14),
+        const Text(
+          'AQI 采用美国标准，PM2.5 单位为 μg/m³。空气质量不可用时显示 --，不影响温度和天气更新。',
+          style: TextStyle(fontSize: 12),
+        ),
+        const SizedBox(height: 10),
+        Text(_weatherStatus, style: const TextStyle(fontSize: 12)),
+      ],
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_weather == null)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 20),
+            child: Icon(Icons.cloud_outlined, size: 42),
+          )
+        else ...[
+          Row(
+            children: [
+              Icon(
+                _weather!.code == 0
+                    ? Icons.wb_sunny_outlined
+                    : _weather!.code < 50
+                    ? Icons.cloud_outlined
+                    : Icons.umbrella_outlined,
+                size: 36,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${_weather!.temperature.toStringAsFixed(1)} °C',
+                      style: const TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Text(
+                      _weather!.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            '${_weather!.minimum?.toStringAsFixed(0) ?? "--"}° / ${_weather!.maximum?.toStringAsFixed(0) ?? "--"}°  ·  湿度 ${_weather!.humidity}%',
+            style: const TextStyle(fontSize: 13),
+          ),
+          Text(
+            '降雨 ${_weather!.rain == null ? "--" : "${_weather!.rain}%"}  ·  UV ${_weather!.uv?.toStringAsFixed(1) ?? "--"}',
+            style: const TextStyle(fontSize: 13),
+          ),
+          Text(
+            'AQI ${_weather!.aqi ?? "--"}  ·  PM2.5 ${_weather!.pm25?.toStringAsFixed(1) ?? "--"}',
+            style: const TextStyle(fontSize: 13),
+          ),
+        ],
+        const SizedBox(height: 8),
+        Text(
+          _weatherStatus,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 11),
+        ),
+        const SizedBox(height: 6),
+        const Text('Open-Meteo · 每 15 分钟更新', style: TextStyle(fontSize: 11)),
+      ],
     ),
   );
 }

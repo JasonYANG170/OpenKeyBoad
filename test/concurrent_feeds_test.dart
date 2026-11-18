@@ -155,11 +155,12 @@ Future<void> _mount(
   _Feeds service,
   List<bool> locks, {
   bool autoStart = true,
+  Size size = const Size(1250, 2000),
 }) async {
   final board = Board.fromJson(
     jsonDecode(File('assets/$id.json').readAsStringSync()) as Json,
   );
-  await tester.binding.setSurfaceSize(const Size(1250, 2000));
+  await tester.binding.setSurfaceSize(size);
   await tester.pumpWidget(
     MaterialApp(
       home: Scaffold(
@@ -182,6 +183,36 @@ Future<void> _mount(
 }
 
 void main() {
+  for (final width in [320.0, 390.0]) {
+    testWidgets('Connected cards and settings fit a $width px phone', (
+      tester,
+    ) async {
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final service = _OnlineFeeds(98);
+      await _mount(tester, 'rs2', service, [], size: Size(width, 900));
+      for (final title in ['实时网速', '番茄钟', '系统音乐律动', '系统歌词', '主机监视器', '天气']) {
+        expect(
+          tester.getSize(find.byKey(ValueKey('online-card-$title'))),
+          const Size(310, 280),
+        );
+      }
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('online-detail-天气')),
+      );
+      await tester.tap(find.byKey(const ValueKey('online-detail-天气')));
+      await tester.pump();
+      expect(find.byType(TextFormField), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('online-detail-番茄钟')),
+      );
+      await tester.tap(find.byKey(const ValueKey('online-detail-番茄钟')));
+      await tester.pump();
+      expect(find.text('短休'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
   testWidgets(
     'New feeds share one switch, keep the selected page and stop audio completely',
     (tester) async {
@@ -204,7 +235,7 @@ void main() {
       for (final title in ['实时网速', '番茄钟', '系统音乐律动', '系统歌词', '主机监视器', '天气']) {
         expect(
           tester.getSize(find.byKey(ValueKey('online-card-$title'))),
-          const Size(310, 540),
+          const Size(310, 280),
         );
       }
       expect(find.text('显示天气'), findsNothing);
@@ -306,6 +337,8 @@ void main() {
       await _mount(tester, 'rs2', service, [], autoStart: false);
       await tester.tap(find.byType(Switch));
       await _drain(tester);
+      await tester.tap(find.byKey(const ValueKey('online-detail-天气')));
+      await tester.pump();
       await tester.enterText(find.byType(TextFormField), 'Shenzhen');
       await tester.testTextInput.receiveAction(TextInputAction.done);
       service.pendingWeather = null;
