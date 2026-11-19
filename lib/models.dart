@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 typedef Json = Map<String, dynamic>;
-const consoleVersion = '0.5.0';
+const consoleVersion = '0.6.0';
 
 int bounded(dynamic value, int max, String field) {
   if (value is! int || value < 0 || value > max) {
@@ -208,14 +208,21 @@ class Profile {
 }
 
 class DeviceRef {
-  const DeviceRef(this.id, this.model, this.label);
+  const DeviceRef(this.id, this.model, this.label, {this.firmwareVersion});
   factory DeviceRef.fromJson(Json json) => DeviceRef(
     json['id'] as String,
     json['model'] as String,
     json['label'] as String,
+    firmwareVersion: json['firmwareVersion'] as String?,
   );
   final String id, model, label;
-  Json toJson() => {'id': id, 'model': model, 'label': label};
+  final String? firmwareVersion;
+  Json toJson() => {
+    'id': id,
+    'model': model,
+    'label': label,
+    if (firmwareVersion != null) 'firmwareVersion': firmwareVersion,
+  };
 }
 
 abstract interface class KeyboardService {
@@ -244,4 +251,19 @@ extension OnlineHost on KeyboardService {
           'supported': false,
           'status': '请通过 Windows / Linux 桌面端连接链接使用系统声音律动。',
         });
+}
+
+String? firmwareVersionFromBcd(int value) {
+  if (value <= 0 || value > 0xffff) return null;
+  final major = (value >> 8) & 255,
+      minor = (value >> 4) & 15,
+      patch = value & 15;
+  return '$major.$minor.$patch';
+}
+
+String? firmwareVersionFromUsbVersion(String? value) {
+  final match = RegExp(r'^(\d+)\.(\d{1,2})$').firstMatch(value ?? '');
+  if (match == null) return null;
+  final digits = match.group(2)!.padLeft(2, '0');
+  return '${int.parse(match.group(1)!)}.${int.parse(digits[0])}.${int.parse(digits[1])}';
 }

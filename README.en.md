@@ -9,6 +9,7 @@
 | Stack | Flutter 3.50 / Dart 3.14, VIA 12, HID |
 | Configuration | Four layers, encoder, chords, per-key RGB, animated lighting, display preferences, sleep, OS mapping, wireless slots |
 | Keyboard display | System lyrics, extended weather, resources, live network speed, Pomodoro, clock sync |
+| Application | System appearance, saved preferences, GitHub update checks, desktop tray and background operation |
 
 ## Build
 

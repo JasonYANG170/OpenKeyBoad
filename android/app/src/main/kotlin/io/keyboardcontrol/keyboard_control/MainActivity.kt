@@ -50,7 +50,7 @@ class MainActivity : FlutterActivity() {
         MethodChannel(engine.dartExecutor.binaryMessenger, "keyboard_control/usb").setMethodCallHandler { call, result ->
             when (call.method) {
                 "scan" -> result.success(usb.deviceList.values.filter(::supported).map {
-                    mapOf("id" to it.deviceName, "vid" to it.vendorId, "pid" to it.productId)
+                    mapOf("id" to it.deviceName, "vid" to it.vendorId, "pid" to it.productId, "version" to it.version)
                 })
                 "open" -> {
                     val id = call.argument<String>("id")

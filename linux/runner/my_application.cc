@@ -20,6 +20,16 @@ static void first_frame_cb(MyApplication* self, FlView* view) {
 static void my_application_activate(GApplication* application) {
   MyApplication* self = MY_APPLICATION(application);
 
+  // Reopening the launcher restores the existing window, including tray mode.
+  GList* windows = gtk_application_get_windows(GTK_APPLICATION(application));
+  if (windows != nullptr) {
+    GtkWindow* existing = GTK_WINDOW(windows->data);
+    gtk_widget_show(GTK_WIDGET(existing));
+    gtk_window_deiconify(existing);
+    gtk_window_present(existing);
+    return;
+  }
+
   GtkWindow* window =
       GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(application)));
   gtk_window_set_default_size(window, 1280, 720);
@@ -33,7 +43,7 @@ static void my_application_activate(GApplication* application) {
   // gtk_header_bar_set_show_close_button(header_bar, TRUE);
   // gtk_window_set_titlebar(window, GTK_WIDGET(header_bar));
 
-  gtk_window_set_title(window, "keyboard_control");
+  gtk_window_set_title(window, "OpenKeyBoad");
 
   g_autoptr(FlDartProject) project = fl_dart_project_new();
   fl_dart_project_set_dart_entrypoint_arguments(
@@ -125,5 +135,5 @@ MyApplication* my_application_new() {
 
   return MY_APPLICATION(g_object_new(my_application_get_type(),
                                      "application-id", APPLICATION_ID, "flags",
-                                     G_APPLICATION_NON_UNIQUE, nullptr));
+                                     static_cast<GApplicationFlags>(0), nullptr));
 }

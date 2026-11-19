@@ -119,6 +119,7 @@ class _Hid {
               base64UrlEncode(bytes),
               board.id,
               '${board.name} · USB $number',
+              firmwareVersion: firmwareVersionFromBcd(info.release),
             ),
           );
         }

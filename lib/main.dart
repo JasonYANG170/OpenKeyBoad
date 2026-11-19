@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
@@ -13,13 +14,14 @@ import 'features_panel.dart';
 import 'device_settings_panel.dart';
 import 'chords.dart';
 import 'chord_dialog.dart';
+import 'app_settings.dart';
+import 'app_theme.dart';
+import 'application_settings_panel.dart';
+import 'updates.dart';
+import 'window_control.dart';
+import 'window_runtime.dart';
 
-const _paper = Color(0xfff4f5ef);
-const _ink = Color(0xff172722);
-const _muted = Color(0xff53665e);
-const _green = Color(0xff235f48);
-const _soft = Color(0xffe6efe7);
-const _border = Color(0xffdce4db);
+import 'package:shared_preferences/shared_preferences.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -32,54 +34,123 @@ Future<void> main() async {
   final catalog = (jsonDecode(
     await rootBundle.loadString('assets/keycodes.json'),
   ) as Json).cast<String, int>();
+  final settings = AppSettings(storage: SharedPreferencesAsync());
+  await settings.load();
   runApp(
-    Console(boards: boards, catalog: catalog, service: localService(boards)),
+    Console(
+      boards: boards,
+      catalog: catalog,
+      service: localService(boards),
+      settings: settings,
+      window: createWindowControl(),
+    ),
   );
 }
 
-class Console extends StatelessWidget {
+class Console extends StatefulWidget {
   const Console({
     super.key,
     required this.boards,
     required this.catalog,
     this.service,
+    this.settings,
+    this.window,
+    this.updates,
   });
   final List<Board> boards;
   final Map<String, int> catalog;
   final KeyboardService? service;
+  final AppSettings? settings;
+  final WindowControl? window;
+  final UpdateCenter? updates;
+  @override
+  State<Console> createState() => _ConsoleState();
+}
+
+class _ConsoleState extends State<Console> {
+  late final settings = widget.settings ?? AppSettings();
+  late final window = widget.window ?? WindowControl();
+  late final updates = widget.updates ?? UpdateCenter();
+  Timer? _updateTimer;
+  late bool _autoEnabled = settings.checkUpdates;
+  @override
+  void initState() {
+    super.initState();
+    settings.addListener(_settingsChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (widget.window != null) await window.initialize(settings);
+      if (!mounted) return;
+      if (widget.settings != null) {
+        _autoCheck();
+        _updateTimer = Timer.periodic(
+          const Duration(hours: 6),
+          (_) => _autoCheck(),
+        );
+      }
+    });
+  }
+
+  void _settingsChanged() {
+    final enabled = settings.checkUpdates;
+    if (widget.settings != null && enabled && !_autoEnabled) _autoCheck();
+    _autoEnabled = enabled;
+  }
+
+  void _autoCheck() {
+    if (settings.checkUpdates &&
+        (settings.lastUpdateCheck == null ||
+            DateTime.now().difference(settings.lastUpdateCheck!) >=
+                const Duration(hours: 6))) {
+      unawaited(updates.check(settings: settings));
+    }
+  }
 
   @override
-  Widget build(BuildContext context) => MaterialApp(
-    title: 'OpenKeyBoad $consoleVersion',
-    debugShowCheckedModeBanner: false,
-    theme: ThemeData(
-      useMaterial3: true,
-      fontFamily: 'Console SC',
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: _green,
-        surface: Colors.white,
-        primary: _green,
-      ),
-      scaffoldBackgroundColor: _paper,
-      visualDensity: VisualDensity.standard,
-      inputDecorationTheme: InputDecorationTheme(
-        filled: true,
-        fillColor: _paper,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
-        ),
+  void dispose() {
+    _updateTimer?.cancel();
+    settings.removeListener(_settingsChanged);
+    if (widget.settings == null) settings.dispose();
+    if (widget.window == null) window.dispose();
+    if (widget.updates == null) updates.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: settings,
+    builder: (context, _) => MaterialApp(
+      title: 'OpenKeyBoad $consoleVersion',
+      debugShowCheckedModeBanner: false,
+      themeMode: settings.theme,
+      theme: consoleTheme(Brightness.light),
+      darkTheme: consoleTheme(Brightness.dark),
+      home: _Workbench(
+        widget.boards,
+        widget.catalog,
+        widget.service,
+        settings,
+        window,
+        updates,
       ),
     ),
-    home: _Workbench(boards, catalog, service),
   );
 }
 
 class _Workbench extends StatefulWidget {
-  const _Workbench(this.boards, this.catalog, this.service);
+  const _Workbench(
+    this.boards,
+    this.catalog,
+    this.service,
+    this.settings,
+    this.window,
+    this.updates,
+  );
   final List<Board> boards;
   final Map<String, int> catalog;
   final KeyboardService? service;
+  final AppSettings settings;
+  final WindowControl window;
+  final UpdateCenter updates;
 
   @override
   State<_Workbench> createState() => _WorkbenchState();
@@ -108,6 +179,9 @@ class _WorkbenchState extends State<_Workbench> {
   @override
   void initState() {
     super.initState();
+    widget.window.beforeExit = () async {
+      await featureKey.currentState?.stopOnline();
+    };
     palette.addListener(_paletteChanged);
     if (widget.service != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _scan());
@@ -127,6 +201,7 @@ class _WorkbenchState extends State<_Workbench> {
 
   @override
   void dispose() {
+    widget.window.beforeExit = null;
     palette.removeListener(_paletteChanged);
     palette.dispose();
     _paletteHex.dispose();
@@ -489,13 +564,16 @@ class _WorkbenchState extends State<_Workbench> {
             width: 46,
             height: 46,
             decoration: BoxDecoration(
-              color: _green,
+              color: AppColors.of(context).green,
               borderRadius: BorderRadius.circular(14),
             ),
-            child: const Icon(Icons.keyboard_outlined, color: Colors.white),
+            child: Icon(
+              Icons.keyboard_outlined,
+              color: Theme.of(context).colorScheme.onPrimary,
+            ),
           ),
           const SizedBox(width: 12),
-          const Flexible(
+          Flexible(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -505,7 +583,7 @@ class _WorkbenchState extends State<_Workbench> {
                   child: Text(
                     'OpenKeyBoad',
                     style: TextStyle(
-                      color: _ink,
+                      color: AppColors.of(context).ink,
                       fontWeight: FontWeight.w800,
                       fontSize: 23,
                     ),
@@ -514,7 +592,7 @@ class _WorkbenchState extends State<_Workbench> {
                 Text(
                   'RS2 3.0 / AK650 · v$consoleVersion',
                   style: TextStyle(
-                    color: _muted,
+                    color: AppColors.of(context).muted,
                     fontSize: 12,
                     letterSpacing: 0.5,
                   ),
@@ -528,6 +606,27 @@ class _WorkbenchState extends State<_Workbench> {
         spacing: 8,
         runSpacing: 8,
         children: [
+          IconButton(
+            tooltip: '应用设置',
+            icon: const Icon(Icons.settings_outlined),
+            onPressed: () => showApplicationSettings(
+              context,
+              widget.settings,
+              widget.window,
+              widget.updates,
+              device,
+            ),
+          ),
+          ListenableBuilder(
+            listenable: widget.window,
+            builder: (context, _) => widget.window.available
+                ? IconButton(
+                    tooltip: '最小化',
+                    icon: const Icon(Icons.minimize),
+                    onPressed: () => widget.window.minimize(),
+                  )
+                : const SizedBox.shrink(),
+          ),
           OutlinedButton.icon(
             onPressed: busy ? null : _enterBridge,
             icon: const Icon(Icons.wifi, size: 18),
@@ -549,9 +648,12 @@ class _WorkbenchState extends State<_Workbench> {
       spacing: 10,
       runSpacing: 8,
       children: [
-        const Text(
+        Text(
           '设备',
-          style: TextStyle(fontWeight: FontWeight.w700, color: _ink),
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            color: AppColors.of(context).ink,
+          ),
         ),
         for (final model in widget.boards)
           ChoiceChip(
@@ -596,15 +698,18 @@ class _WorkbenchState extends State<_Workbench> {
               children: [
                 Text(
                   board.name,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 25,
                     fontWeight: FontWeight.w800,
-                    color: _ink,
+                    color: AppColors.of(context).ink,
                   ),
                 ),
                 Text(
                   '${board.keys.length} 个键位  ·  ${board.layers} 层  ·  ${board.usbId}',
-                  style: const TextStyle(color: _muted, fontSize: 13),
+                  style: TextStyle(
+                    color: AppColors.of(context).muted,
+                    fontSize: 13,
+                  ),
                 ),
               ],
             ),
@@ -689,7 +794,7 @@ class _WorkbenchState extends State<_Workbench> {
                     ? '点击键盘上的按键设置颜色。旋钮没有可配置的灯位。'
                     : '可切换到逐键配色，直接选择键盘上的按键。'
               : '选择键位后，在编辑面板更换键码。',
-          style: const TextStyle(color: _muted, fontSize: 12),
+          style: TextStyle(color: AppColors.of(context).muted, fontSize: 12),
         ),
       ],
     ),
@@ -701,12 +806,12 @@ class _WorkbenchState extends State<_Workbench> {
         : Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text(
+              Text(
                 '键位编辑',
                 style: TextStyle(
                   fontSize: 19,
                   fontWeight: FontWeight.w800,
-                  color: _ink,
+                  color: AppColors.of(context).ink,
                 ),
               ),
               const SizedBox(height: 12),
@@ -717,15 +822,15 @@ class _WorkbenchState extends State<_Workbench> {
                           _short(
                             preferred[board.defaults.first[selection]] ?? '键位',
                           )),
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.w700,
-                  color: _green,
+                  color: AppColors.of(context).green,
                 ),
               ),
               Text(
                 '矩阵 ${board.keys[selection].row}, ${board.keys[selection].column}',
-                style: const TextStyle(color: _muted),
+                style: TextStyle(color: AppColors.of(context).muted),
               ),
               const SizedBox(height: 11),
               OutlinedButton.icon(
@@ -754,7 +859,7 @@ class _WorkbenchState extends State<_Workbench> {
                   contentPadding: EdgeInsets.zero,
                   leading: Icon(
                     i == 0 ? Icons.rotate_left : Icons.rotate_right,
-                    color: _green,
+                    color: AppColors.of(context).green,
                   ),
                   title: Text(i == 0 ? '逆时针' : '顺时针'),
                   subtitle: Text(
@@ -771,12 +876,12 @@ class _WorkbenchState extends State<_Workbench> {
   Widget _lightInspector() => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      const Text(
+      Text(
         'RGB 灯光',
         style: TextStyle(
           fontSize: 19,
           fontWeight: FontWeight.w800,
-          color: _ink,
+          color: AppColors.of(context).ink,
         ),
       ),
       const SizedBox(height: 12),
@@ -805,15 +910,15 @@ class _WorkbenchState extends State<_Workbench> {
       children: [
         Text(
           label,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 25,
             fontWeight: FontWeight.w700,
-            color: _green,
+            color: AppColors.of(context).green,
           ),
         ),
         Text(
           '矩阵 ${key.row}, ${key.column}',
-          style: const TextStyle(color: _muted),
+          style: TextStyle(color: AppColors.of(context).muted),
         ),
         const SizedBox(height: 12),
         Wrap(
@@ -840,7 +945,10 @@ class _WorkbenchState extends State<_Workbench> {
                     height: 26,
                     decoration: BoxDecoration(
                       color: Color(0xff000000 | c),
-                      border: Border.all(color: _border, width: 2),
+                      border: Border.all(
+                        color: AppColors.of(context).border,
+                        width: 2,
+                      ),
                       borderRadius: BorderRadius.circular(7),
                     ),
                   ),
@@ -979,12 +1087,15 @@ class _WorkbenchState extends State<_Workbench> {
       Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(color: _muted)),
+          Text(label, style: TextStyle(color: AppColors.of(context).muted)),
           Text(
             hue
                 ? '${(value * 359 / 255).round()}°'
                 : '${(value * 100 / 255).round()}%',
-            style: const TextStyle(color: _ink, fontWeight: FontWeight.w700),
+            style: TextStyle(
+              color: AppColors.of(context).ink,
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ],
       ),
@@ -1006,7 +1117,9 @@ class _WorkbenchState extends State<_Workbench> {
       children: [
         Text(
           dirty && !bad && !busy ? '有未应用的改动。' : status,
-          style: TextStyle(color: bad ? Colors.red.shade800 : _muted),
+          style: TextStyle(
+            color: bad ? Colors.red.shade800 : AppColors.of(context).muted,
+          ),
         ),
         Wrap(
           spacing: 8,
@@ -1067,7 +1180,7 @@ class _Keyboard extends StatelessWidget {
     final rows = board.keys.map((k) => k.y + k.height).reduce(max);
     final unit = min((width - 24) / columns, 61.0);
     final color = light == null
-        ? _green
+        ? AppColors.of(context).green
         : HSVColor.fromAHSV(
             1,
             light!.hue * 359 / 255,
@@ -1078,9 +1191,9 @@ class _Keyboard extends StatelessWidget {
       width: width,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xffe7ece3),
+        color: AppColors.of(context).keyboard,
         borderRadius: BorderRadius.circular(17),
-        border: Border.all(color: _border),
+        border: Border.all(color: AppColors.of(context).border),
       ),
       child: Align(
         alignment: Alignment.centerLeft,
@@ -1095,7 +1208,7 @@ class _Keyboard extends StatelessWidget {
                   top: board.keys[i].y * unit + 2,
                   width: board.keys[i].width * unit - 4,
                   height: board.keys[i].height * unit - 4,
-                  child: _key(i, color),
+                  child: _key(context, i, color),
                 ),
             ],
           ),
@@ -1104,22 +1217,28 @@ class _Keyboard extends StatelessWidget {
     );
   }
 
-  Widget _key(int index, Color color) {
+  Widget _key(BuildContext context, int index, Color color) {
     final selectedKey = index == selected;
     final pos = board.keys[index];
     final code = codes[index];
     final blank = code == 1;
     final normalFill = selectedKey
-        ? _green
+        ? AppColors.of(context).green
         : light == null || light!.effect == 0
-        ? (blank ? const Color(0xffedf1e9) : Colors.white)
-        : Color.lerp(Colors.white, color, (light!.brightness / 255) * 0.7)!;
+        ? (blank ? AppColors.of(context).soft : AppColors.of(context).keycap)
+        : Color.lerp(
+            AppColors.of(context).keycap,
+            color,
+            (light!.brightness / 255) * 0.7,
+          )!;
     final led = colors?[index];
     final fill = led == null ? normalFill : Color(0xff000000 | led);
     final foreground = led == null
-        ? (selectedKey ? Colors.white : _ink)
+        ? (selectedKey
+              ? Theme.of(context).colorScheme.onPrimary
+              : AppColors.of(context).ink)
         : fill.computeLuminance() > 0.38
-        ? _ink
+        ? const Color(0xff172722)
         : Colors.white;
     final label = pos.encoder
         ? '◉'
@@ -1133,7 +1252,9 @@ class _Keyboard extends StatelessWidget {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(pos.encoder ? 19 : 7),
           side: BorderSide(
-            color: selectedKey ? _green : _border,
+            color: selectedKey
+                ? AppColors.of(context).green
+                : AppColors.of(context).border,
             width: selectedKey && colors != null ? 3 : 1,
           ),
         ),
@@ -1169,9 +1290,9 @@ class _Panel extends StatelessWidget {
   final Widget child;
   @override
   Widget build(BuildContext context) => Material(
-    color: Colors.white,
+    color: AppColors.of(context).panel,
     shape: RoundedRectangleBorder(
-      side: const BorderSide(color: _border),
+      side: BorderSide(color: AppColors.of(context).border),
       borderRadius: BorderRadius.circular(19),
     ),
     clipBehavior: Clip.antiAlias,
@@ -1186,14 +1307,14 @@ class _Pill extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     decoration: BoxDecoration(
-      color: live ? _soft : _paper,
+      color: live ? AppColors.of(context).soft : AppColors.of(context).paper,
       borderRadius: BorderRadius.circular(28),
     ),
     padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
     child: Text(
       text,
       style: TextStyle(
-        color: live ? _green : _muted,
+        color: live ? AppColors.of(context).green : AppColors.of(context).muted,
         fontSize: 12,
         fontWeight: FontWeight.w700,
       ),

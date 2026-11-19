@@ -53,7 +53,14 @@ class AndroidService implements KeyboardService {
       for (final dynamic item in devices)
         for (final board in boards)
           if (item['vid'] == board.vid && item['pid'] == board.pid)
-            DeviceRef(item['id'] as String, board.id, '${board.name} · USB'),
+            DeviceRef(
+              item['id'] as String,
+              board.id,
+              '${board.name} · USB',
+              firmwareVersion: firmwareVersionFromUsbVersion(
+                item['version'] as String?,
+              ),
+            ),
     ];
   }
 
