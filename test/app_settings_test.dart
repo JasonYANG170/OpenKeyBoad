@@ -40,7 +40,37 @@ class DesktopWindowFixture extends WindowControl {
   bool get trayReady => true;
 }
 
+class UpdateCheckFixture extends UpdateCenter {
+  int calls = 0;
+  @override
+  Future<void> check({AppSettings? settings}) async {
+    calls++;
+    checkedAt = DateTime.now();
+  }
+}
+
 void main() {
+  testWidgets('startup checks updates even after a recent previous session', (
+    tester,
+  ) async {
+    final board = Board.fromJson(
+      jsonDecode(File('assets/rs2.json').readAsStringSync()) as Json,
+    );
+    final settings = AppSettings()..lastUpdateCheck = DateTime.now();
+    final updates = UpdateCheckFixture();
+    addTearDown(settings.dispose);
+    addTearDown(updates.dispose);
+    await tester.pumpWidget(
+      Console(
+        boards: [board],
+        catalog: const {},
+        settings: settings,
+        updates: updates,
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(updates.calls, 1);
+  });
   test('invalid saved selections recover to usable defaults', () async {
     final store = MemoryPreferences()
       ..values.addAll({'app.theme': 999, 'app.close': -1});

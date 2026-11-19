@@ -98,7 +98,8 @@ class _ConsoleState extends State<Console> {
 
   void _autoCheck() {
     if (settings.checkUpdates &&
-        (settings.lastUpdateCheck == null ||
+        (updates.checkedAt == null ||
+            settings.lastUpdateCheck == null ||
             DateTime.now().difference(settings.lastUpdateCheck!) >=
                 const Duration(hours: 6))) {
       unawaited(updates.check(settings: settings));

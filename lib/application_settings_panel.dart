@@ -96,7 +96,7 @@ class _ApplicationSettingsPanelState extends State<ApplicationSettingsPanel> {
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text('自动检查更新'),
-            subtitle: const Text('每 6 小时检查上位机和两款键盘固件'),
+            subtitle: const Text('启动时及每 6 小时检查上位机和键盘固件'),
             value: widget.settings.checkUpdates,
             onChanged: (value) {
               widget.settings.checkUpdates = value;
